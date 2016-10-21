@@ -159,24 +159,6 @@ size_t add_symbol(symbol s) {
             return symaddr.address;
         }
     }
-            
-    for (size_t pos=0; pos < eeprom_get_size();) {
-        symbol symitr;
-        if (lseek(fd, pos, SEEK_SET) == -1 ||
-                read(fd, &symitr, sizeof(symbol)) == -1) {
-            perror("unable to seek or read in eeprom.bin");
-        }
-        if (sym.symbol == symitr.symbol) {
-            char symitr_str[MAX_SYMBOL_CHARS];
-            read(fd, &symitr_str, sym.strlen);
-            if (strncmp(symitr_str, sym.symbolstr, sym.strlen) == 0) {
-                
-                return pos;
-            }
-        } else {
-            
-        }
-    }
     return 0;
 }
 

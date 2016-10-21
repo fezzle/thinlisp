@@ -16,7 +16,7 @@
 #define LIST_QUALIFIERS_MASK (0x2000)
 #define LIST_IS_QUOTED(X) ((X) & (0x2000))
 
-
+#include "defines.h"
 
 int16_t rdr_make_integer(int16_t n) {
   if ((int16_t)n < -BIT14) {

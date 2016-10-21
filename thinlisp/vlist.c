@@ -21,7 +21,8 @@ SUBLIST *sublist_new(BISTACK *bs, size_t s) {
  
 typedef struct vlist {
 	SUBLIST* head;
-	size_t last_size, ofs;
+  size_t last_size;
+  size_t ofs;
 } VLIST;
  
 VLIST *vlist_new(BISTACK *bs) {
@@ -32,7 +33,7 @@ VLIST *vlist_new(BISTACK *bs) {
   return v;
 }
  
-inline size_t vlist_size(VLIST *v) {
+size_t vlist_size(VLIST *v) {
   return v->last_size * 2 - v->ofs - 2;
 }
  
@@ -51,7 +52,7 @@ int* vlist_address(VLIST *v, size_t idx) {
   return s->buf + i;
 }
  
-inline int vlist_element(VLIST *v, size_t idx) {
+int vlist_element(VLIST *v, size_t idx) {
   return *vlist_address(v, idx);
 }
  
@@ -88,19 +89,23 @@ int vlist_shift(VLIST *v) {
   }
   return x;
 }
- 
+
+#ifdef VLIST_TEST
 int main() {
   int i;
  
-  VLIST *v = vlist_new();
-  for (i = 0; i < 10; i++) v_unshift(v, i);
+  BISTACK *bs = bistack_new(10000);
+  
+  VLIST *v = vlist_new(bs);
+  for (i = 0; i < 10; i++) vlist_unshift(v, bs, i);
  
-  printf("size: %d\n", v_size(v));
-  for (i = 0; i < 10; i++) printf("v[%d] = %d\n", i, v_elem(v, i));
-  for (i = 0; i < 10; i++) printf("shift: %d\n", v_shift(v));
+  printf("size: %d\n", vlist_size(v));
+  for (i = 0; i < 10; i++) printf("v[%d] = %d\n", i, vlist_element(v, i));
+  for (i = 0; i < 10; i++) printf("shift: %d\n", vlist_shift(v));
  
   /* v_shift(v); */ /* <- boom */
  
-  v_del(v);
+  //vlist_delete(v);
   return 0;
 }
+#endif

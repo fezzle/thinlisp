@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include "bistack.h"
-#include "main.h"
+#include "defines.h"
 
 #define AVL_NOTSET NULL
 

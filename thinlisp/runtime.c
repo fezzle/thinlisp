@@ -3,6 +3,8 @@
 
 #include "runtime.h"
 
+jmp_buf __jmpbuff;
+
 void lerror(uint16_t exctype, char *err, ...) {
   #ifndef LIMITED_ENVIRONMENT
   printf("ERROR: %s\n", err);

@@ -3,7 +3,6 @@
 
 #include <string.h>
 #include <stdint.h>
-#include "utils.h"
 
 #ifndef PSTR
 #define PSTR(X) ((char*)(X))
@@ -13,6 +12,11 @@
 
 #endif
 
+
+#define BIT31 ((int32_t)1<<31)
+#define BIT30 ((int32_t)1<<30)
+#define BIT15 ((int16_t)1<<15)
+#define BIT14 ((int16_t)1<<14)
 
 //bistack.c debug
 //#define BS_DEBUG(...) fprintf(stderr, __VA_ARGS__)
@@ -45,8 +49,8 @@ typedef union {
 
 #define Q16_BE(X) (((uint16_t)(X)>>8) | ((uint16_t)(X)<<8))
 
-// hashes from util's string hash are used as avl keys
-typedef hash_t key_t;
+typedef uint16_t hash_t;
+
 
 // avl keys are used as symbol identifiers
 typedef hash_t SYMBOL;
@@ -97,6 +101,8 @@ static inline SYMBOL next_symbol(SYMBOL sym) {
   // high bit of symbol is reserved
   return (sym+1) & ~(1 << (sizeof(SYMBOL)-1));
 }
+
+typedef uint8_t AST_TYPE;
 
 typedef struct ast_type {
   union {

@@ -8,22 +8,14 @@
 
 /* Begin PBXBuildFile section */
 		072B63A31D859EAB00CF2123 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = 072B63A21D859EAB00CF2123 /* main.c */; };
-		072B63F01D859F6700CF2123 /* runtime.c in Sources */ = {isa = PBXBuildFile; fileRef = 072B63D21D859F6700CF2123 /* runtime.c */; };
-		072B63F11D859F6700CF2123 /* t.c in Sources */ = {isa = PBXBuildFile; fileRef = 072B63D41D859F6700CF2123 /* t.c */; };
-		072B63F21D859F6700CF2123 /* ast_test.c in Sources */ = {isa = PBXBuildFile; fileRef = 072B63D61D859F6700CF2123 /* ast_test.c */; };
-		072B63F31D859F6700CF2123 /* try2.c in Sources */ = {isa = PBXBuildFile; fileRef = 072B63DA1D859F6700CF2123 /* try2.c */; };
 		072B63F41D859F6700CF2123 /* utils.c in Sources */ = {isa = PBXBuildFile; fileRef = 072B63DC1D859F6700CF2123 /* utils.c */; };
 		072B63F51D859F6700CF2123 /* vlist.c in Sources */ = {isa = PBXBuildFile; fileRef = 072B63DE1D859F6700CF2123 /* vlist.c */; };
-		072B63F61D859F6700CF2123 /* avl.c in Sources */ = {isa = PBXBuildFile; fileRef = 072B63DF1D859F6700CF2123 /* avl.c */; };
 		072B63F71D859F6700CF2123 /* bistack.c in Sources */ = {isa = PBXBuildFile; fileRef = 072B63E11D859F6700CF2123 /* bistack.c */; };
-		072B63F81D859F6700CF2123 /* environment.c in Sources */ = {isa = PBXBuildFile; fileRef = 072B63E41D859F6700CF2123 /* environment.c */; };
-		072B63F91D859F6700CF2123 /* eval.c in Sources */ = {isa = PBXBuildFile; fileRef = 072B63E61D859F6700CF2123 /* eval.c */; };
 		072B63FA1D859F6700CF2123 /* heap.c in Sources */ = {isa = PBXBuildFile; fileRef = 072B63E71D859F6700CF2123 /* heap.c */; };
 		072B63FB1D859F6700CF2123 /* list.c in Sources */ = {isa = PBXBuildFile; fileRef = 072B63E91D859F6700CF2123 /* list.c */; };
 		072B63FC1D859F6700CF2123 /* nvmem.c in Sources */ = {isa = PBXBuildFile; fileRef = 072B63EC1D859F6700CF2123 /* nvmem.c */; };
-		072B63FD1D859F6700CF2123 /* reader.c in Sources */ = {isa = PBXBuildFile; fileRef = 072B63EE1D859F6700CF2123 /* reader.c */; };
-		072B63FF1D859F8500CF2123 /* Makefile in Sources */ = {isa = PBXBuildFile; fileRef = 072B63FE1D859F8500CF2123 /* Makefile */; };
 		072B64021D85A1E400CF2123 /* eeprom.c in Sources */ = {isa = PBXBuildFile; fileRef = 072B64001D85A1E400CF2123 /* eeprom.c */; };
+		076228C91DB9C0E6008C8282 /* runtime.c in Sources */ = {isa = PBXBuildFile; fileRef = 072B63D21D859F6700CF2123 /* runtime.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -65,7 +57,7 @@
 		072B63E81D859F6700CF2123 /* heap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = heap.h; sourceTree = "<group>"; };
 		072B63E91D859F6700CF2123 /* list.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = list.c; sourceTree = "<group>"; };
 		072B63EA1D859F6700CF2123 /* list.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = list.h; sourceTree = "<group>"; };
-		072B63EB1D859F6700CF2123 /* main.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = main.h; sourceTree = "<group>"; };
+		072B63EB1D859F6700CF2123 /* defines.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = defines.h; sourceTree = "<group>"; };
 		072B63EC1D859F6700CF2123 /* nvmem.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = nvmem.c; sourceTree = "<group>"; };
 		072B63ED1D859F6700CF2123 /* nvmem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = nvmem.h; sourceTree = "<group>"; };
 		072B63EE1D859F6700CF2123 /* reader.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = reader.c; sourceTree = "<group>"; };
@@ -127,7 +119,7 @@
 				072B63E81D859F6700CF2123 /* heap.h */,
 				072B63E91D859F6700CF2123 /* list.c */,
 				072B63EA1D859F6700CF2123 /* list.h */,
-				072B63EB1D859F6700CF2123 /* main.h */,
+				072B63EB1D859F6700CF2123 /* defines.h */,
 				072B63EC1D859F6700CF2123 /* nvmem.c */,
 				072B63ED1D859F6700CF2123 /* nvmem.h */,
 				072B63EE1D859F6700CF2123 /* reader.c */,
@@ -206,22 +198,14 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				076228C91DB9C0E6008C8282 /* runtime.c in Sources */,
 				072B63FB1D859F6700CF2123 /* list.c in Sources */,
 				072B63F51D859F6700CF2123 /* vlist.c in Sources */,
 				072B63FA1D859F6700CF2123 /* heap.c in Sources */,
 				072B64021D85A1E400CF2123 /* eeprom.c in Sources */,
-				072B63F61D859F6700CF2123 /* avl.c in Sources */,
-				072B63F91D859F6700CF2123 /* eval.c in Sources */,
 				072B63F71D859F6700CF2123 /* bistack.c in Sources */,
-				072B63FF1D859F8500CF2123 /* Makefile in Sources */,
-				072B63F31D859F6700CF2123 /* try2.c in Sources */,
-				072B63F11D859F6700CF2123 /* t.c in Sources */,
-				072B63F01D859F6700CF2123 /* runtime.c in Sources */,
 				072B63F41D859F6700CF2123 /* utils.c in Sources */,
-				072B63F81D859F6700CF2123 /* environment.c in Sources */,
-				072B63F21D859F6700CF2123 /* ast_test.c in Sources */,
 				072B63A31D859EAB00CF2123 /* main.c in Sources */,
-				072B63FD1D859F6700CF2123 /* reader.c in Sources */,
 				072B63FC1D859F6700CF2123 /* nvmem.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -343,6 +327,7 @@
 				072B63A81D859EAB00CF2123 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

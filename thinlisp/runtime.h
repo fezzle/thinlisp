@@ -5,7 +5,7 @@
 #include <setjmp.h>
 #include <stdio.h>
 
-#include "main.h"
+#include "defines.h"
 
 enum {
   BISTACK_OUT_OF_MEMORY=1,
@@ -17,7 +17,7 @@ enum {
   NVMEM_OUT_OF_MEMORY,
 };
 
-jmp_buf __jmpbuff;
+extern jmp_buf __jmpbuff;
 
 void lerror(uint16_t exctype, char *err, ...);
 void lassert(uint16_t truefalse, uint16_t exctype, ...);

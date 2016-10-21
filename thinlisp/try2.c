@@ -1,8 +1,8 @@
 #define try2
 
-#include "main.h"
-
-
+#include "defines.h"
+#include "reader.h"
+/*
 static AST_TYPE read_tokenstart(READER *reader) {
   // returns the next token type modifiers and type
   char c = reader_getc(reader);
@@ -67,4 +67,4 @@ static AST_TYPE read_tokenstart(READER *reader) {
   }
   printf("unhandled: %c(%hhx)\n", c, c);
   return (AST_TYPE){.type = 0, .prefix = 0};
-}
+}*/

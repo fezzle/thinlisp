@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <assert.h>
+#include "defines.h"
 #include "utils.h"
 #include "list.h"
 #include "bistack.h"
@@ -47,11 +48,6 @@ typedef struct reader {
 
 READER *reader_new(BISTACK *bs);
 
-
-symbol_t get_symbol(char *str) {
-  symbol_t symbol = hashstr(str, strlen);
-  
-}
 
 #include <stdio.h>
 static inline char reader_getc(READER *r) {

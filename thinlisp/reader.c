@@ -23,7 +23,7 @@ READER *reader_new(BISTACK *bs) {
   return r;
 }
  
-
+/*
 static AST_TYPE read_tokenstart(READER *reader) {
   // returns the next token type modifiers and type
   char c = reader_getc(reader);
@@ -89,7 +89,7 @@ static AST_TYPE read_tokenstart(READER *reader) {
   printf("unhandled: %c(%hhx)\n", c, c);
   return (AST_TYPE){.type = 0, .prefix = 0};
 }
-
+*/
 
 SYMBOL reader_makeintegerorsymbol(READER *reader) {
   /**
@@ -97,7 +97,7 @@ SYMBOL reader_makeintegerorsymbol(READER *reader) {
    * Integer.
    *
    * The symbol must be fully read into reader->current_atom->string
-   */
+   
   assert(reader->current_atom);
   assert(reader->current_atom->string);
   assert(bistack_dir(reader->bs) == BS_FORWARD);
@@ -169,6 +169,8 @@ SYMBOL reader_makeintegerorsymbol(READER *reader) {
   reader->total_astnodes += 1;
   reader->total_strlen += symbollen;
   return astnode;
+   */
+  return 1;
 }
 
 
@@ -176,7 +178,7 @@ AST_NODE *read_atom(READER *reader) {
   /**
    * Reads or continues reading an atom from reader.
    * Marks the stack on entrance, rewinds the stack once an atom is fully read.
-   */
+   
   MULTISTRING *ms = reader->current_atom->string;
   AST_TYPE atomtype = reader->current_atom->type;
 
@@ -211,10 +213,11 @@ AST_NODE *read_atom(READER *reader) {
     } else {
       ms_writechar(ms, reader->bs, c);
     }
-  }
+  }*/
+  return 1;
 }
 
- 
+ /*
 AST_NODE *reader_continue(READER *reader) {
   while (1) {
     // if in comment, loop until newline
@@ -382,7 +385,7 @@ void reader_pprint(READER *reader, AST_NODE *root, uint8_t indentspaces) {
   }
 }
 
-
+*/
 
 
 #ifdef READER_TEST
@@ -414,7 +417,6 @@ static char * test_reader_sample() {
    
    return 0;
 }
-
 
 
 static char *all_tests() {
