@@ -38,7 +38,7 @@ LDFLAGS += -l$(RL_LIBRARY) $(GLIB_LDFLAGS) -ldl -lffi
 
 .PHONY: clean
 
-READER_PARTS=reader bistack runtime avl utils list
+READER_PARTS=bistack runtime utils list reader
 NVMEM_PARTS=nvmem runtime
 
 OBJ=.
@@ -60,23 +60,31 @@ heap_test: heap.c heap.h
 	$(CC) $(CFLAGS) -g $< -DHEAP_TEST -o $@ && ./$@ && rm $@
 
 bistack_test: bistack.c bistack.h runtime.c runtime.h heap.c heap.h
-	$(CC) $(CFLAGS) -g $(filter %.c,$^) -DBISTACK_TEST -o $@ && ./$@ && rm $@
+	$(CC) $(CFLAGS) -g $(filter %.c,$^) -DBISTACK_TEST -o test/$@ 
+
+run_bistack_test: bistack_test
+	./test/bistack_test
 
 list_test: list.c list.h bistack.c bistack.h runtime.c runtime.h utils.c utils.h
-	$(CC) $(CFLAGS) -g $(filter %.c,$^) -DLIST_TEST -o $@ && ./$@ && rm $@
+	$(CC) $(CFLAGS) -g $(filter %.c,$^) -DLIST_TEST -o test/$@ && ./test/$@
 
 utils_test: utils.c
-	$(CC) $(CFLAGS) -g $< -DUTILS_TEST -o $@ && ./$@ && rm $@
+	$(CC) $(CFLAGS) -g $< -DUTILS_TEST -o test/$@ && ./test/$@
 
 reader_test: $(patsubst %,%.c,$(READER_PARTS)) $(patsubst %,%.h,$(READER_PARTS))
-	$(CC) $(CFLAGS) -g $(filter %.c,$^) -DREADER_TEST -o $@ && ./$@ && rm $@
+	$(CC) $(CFLAGS) -g $(filter %.c,$^) -DREADER_TEST -o test/$@ 
+
+run_reader_test: 
+	./test/reader_test
 
 nvmem_test: $(patsubst %,%.c,$(NVMEM_PARTS)) $(patsubst %,%.h,$(NVMEM_PARTS))
 	$(CC) $(CFLAGS) -g $(filter %.c,$^) -DNVMEM_TEST -o $@ && ./$@ && rm $@
 
-
 avl_test: $(patsubst %,%.c,$(AVL_SOURCES)) $(patsubst %,%.h,$(AVL_SOURCES))
-	$(CC) $(CLFAGS) -g $(patsubst %,%.c,$(AVL_SOURCES)) -DAVL_TEST -o $@ && ./$@ && rm $@
+	$(CC) $(CLFAGS) -g $(patsubst %,%.c,$(AVL_SOURCES)) -DAVL_TEST -o test/$@ 
+
+run_avl_test: avl_test
+	./test/avl_test
 
 all_test: heap_test
 

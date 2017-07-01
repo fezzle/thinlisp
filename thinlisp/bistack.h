@@ -15,10 +15,11 @@ typedef struct bistack {
   MARK *backwardmark;
   void *backwardptr;
 
-  unsigned char direction_stack;
+  uint8_t direction_stack;
 } BISTACK;
 
-BISTACK *bistack_new(int size);
+BISTACK *bistack_new(size_t size);
+BISTACK *bistack_init(void *buffer, size_t len);
 void bistack_destroy(BISTACK *bs);
 int bistack_freemem(BISTACK *bs);
 

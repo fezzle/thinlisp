@@ -27,7 +27,10 @@ typedef struct {
   char name[1];
 } NVMEM_MODULEBLOCK;
 
+// divide by 2, round up
 #define TO_2(X) (((X)+1) >> 1)
+
+// multiply by 2
 #define FROM_2(X) ((X) << 1)
 
 /* Returns the addr of the saved data */
@@ -56,6 +59,5 @@ inline static void assert_read(FILE *file, void *ptr, size_t size) {
 inline static void assert_seek(FILE *file, size_t pos) {
   lassert(fseek(file, pos, SEEK_SET) != -1, NVMEM_READ_ERROR);
 }
-
 
 #endif

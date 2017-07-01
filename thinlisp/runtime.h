@@ -10,6 +10,8 @@
 enum {
   BISTACK_OUT_OF_MEMORY=1,
   READER_SYNTAX_ERROR,
+  READER_INTEGER_ERROR,
+  READER_STATE_ERROR,
   VLIST_INDEX_ERROR,
   VLIST_SHIFT_ON_EMPTY,
   NVMEM_READ_ERROR,
@@ -26,8 +28,5 @@ void lassert(uint16_t truefalse, uint16_t exctype, ...);
 #define POSIX
 #endif
 
-typedef struct {
-  KEYVALUE* bst_symbols;
-} RUNTIME;
 
 #endif

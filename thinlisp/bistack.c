@@ -37,9 +37,8 @@ void *bistack_alloc(BISTACK *bs, uint16_t size) {
   }
 }
 
-
-BISTACK *bistack_new(int size) {
-  BISTACK *bs = malloc(size);
+BISTACK *bistack_init(void *buffer, size_t size) {
+  BISTACK *bs = (BISTACK*)buffer;
   bs->forwardptr = (void*)bs + sizeof(BISTACK);
   bs->forwardmark = NULL;
   
@@ -48,6 +47,11 @@ BISTACK *bistack_new(int size) {
 
   bs->direction_stack = BS_FORWARD;
   return bs;
+}
+
+BISTACK *bistack_new(size_t size) {
+  BISTACK *bs = malloc(size);
+  return bistack_init(bs, size);
 }
 
 void bistack_destroy(BISTACK *bs) {
@@ -145,7 +149,7 @@ int tests_run = 0;
 static char * test_new_bistack() {
    BISTACK *bs = bistack_new(1024);
    mu_assert("new bistack not correct size",
-	     bistack_freemem(bs) == (1024-4*sizeof(void*)));
+	     bistack_freemem(bs) == (1024-(sizeof(BISTACK))));
    bistack_destroy(bs);
    return 0;
 }
@@ -213,7 +217,7 @@ static char *test_alloc_toomuch() {
     bistack_allocb(bs, 700);
     mu_assert("oom not thrown", 0);
   } else {
-    mu_assert("exception type was not oom", exctype == OUT_OF_MEMORY);
+    mu_assert("exception type was not oom", exctype == BISTACK_OUT_OF_MEMORY);
   }
   return 0;
 }

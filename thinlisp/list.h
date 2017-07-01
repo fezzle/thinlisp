@@ -1,10 +1,13 @@
+#ifndef LIST_H
+#define LIST_H
+
 #include "bistack.h"
 #include "utils.h"
 
 #define MULTISTRING_BUFSIZE ((int)(sizeof(void*) * 3))
 
-typedef struct node {
-  struct node *next;
+typedef struct listnode {
+  struct listnode *next;
   void *val;
 } LIST_NODE;
 
@@ -14,8 +17,8 @@ typedef struct list {
    * If head is NULL, there are no nodes currently allocated.
    * The tail node should be examined to see if it has a non-null next;
    */
-  struct node *head;
-  struct node *tail;
+  struct listnode *head;
+  struct listnode *tail;
   uint8_t count;
 } LIST;
 
@@ -37,9 +40,9 @@ int ms_strncmp(MULTISTRING *ms, char *str, int n);
 char *ms_assemble(MULTISTRING *ms, char *buff);
 
 /* Iterates over the multistring character by character */
-char ms_chariter(MULTISTRING *ms, int *counter, struct node** ptrbuf);
+char ms_chariter(MULTISTRING *ms, int *counter, struct listnode** ptrbuf);
 
-hash_t ms_hash(MULTISTRING *ms);
+uint32_t ms_hash(MULTISTRING *ms);
 
 /* Returns the total length of the multistring, not including \0 terminator */
 static inline int ms_length(MULTISTRING *ms) {
@@ -47,7 +50,14 @@ static inline int ms_length(MULTISTRING *ms) {
 }
 
 LIST *list_new(BISTACK *bs);
+LIST *list_init(LIST *list);
 void *list_append(LIST *list, BISTACK *bs, void *val);
 int list_count(LIST *list);
 void *list_iter(LIST *list, void **iter);
 void list_reset(LIST *list);
+void *list_pop(LIST *list);
+void *list_unshift(LIST *list, BISTACK *bs, void *val);
+void *list_shift(LIST *list);
+
+void *list_first(LIST *list);
+#endif

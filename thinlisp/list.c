@@ -4,16 +4,21 @@
 #include "bistack.h"
 #include "list.h"
 
-LIST *list_new(BISTACK *bs) {
-  LIST* list = (LIST*)bistack_alloc(bs, sizeof(LIST));
+LIST *list_init(LIST *list) {
   list->head = NULL;
   list->tail = NULL;
   list->count = 0;
   return list;
 }
 
+LIST *list_new(BISTACK *bs) {
+  LIST* list = (LIST*)bistack_alloc(bs, sizeof(LIST));
+  return list_init(list);
+}
+
 void *list_append(LIST *list, BISTACK *bs, void *val) {
-  struct node* newnode = (struct node*)bistack_alloc(bs, sizeof(struct node));
+  struct listnode* newnode = (struct listnode*)(
+    bistack_alloc(bs, sizeof(struct listnode)));
   newnode->val = val;
   newnode->next = NULL;
   if (list->head == NULL) {
@@ -27,6 +32,74 @@ void *list_append(LIST *list, BISTACK *bs, void *val) {
   return val;
 }
 
+void *list_pop(LIST *list) {
+  /**
+   * Removes last item from list and returns it, however no freeing occurs.
+   */
+  LIST_NODE *second_last=list->head; 
+  if (second_last == NULL) {
+    // list empty
+    return NULL;
+  }
+  if (second_last == list->tail) {
+    // list has 1 node, set list to empty and retur last nodee
+    list->head = NULL;
+    list->tail = NULL;
+    list->count = 0;
+    return second_last->val;
+
+  } else {
+    while (second_last->next != list->tail && second_last != NULL) {
+      second_last=second_last->next;
+    }
+    LIST_NODE *last = list->tail;
+
+    list->tail = second_last;
+    list->tail->next = NULL;
+    list->count--;
+
+    return last->val;
+  }
+}
+
+void *list_unshift(LIST *list, BISTACK *bs, void *val) {
+  /**
+   * Pushes an item onto front of list
+   */
+  LIST_NODE *new_front = (LIST_NODE*)bistack_alloc(bs, sizeof(LIST_NODE));
+  new_front->next = list->head;
+  new_front->val = val;
+  list->head = new_front;
+  if (list->tail == NULL) {
+    list->tail = list->head;
+  }
+  list->count++;
+  return val;
+}
+
+void *list_shift(LIST *list) {
+  /**
+   * Removes item from front of list returning val without freeing memory
+   */
+  if (list->head == NULL) {
+    return NULL;
+  } 
+  
+  LIST_NODE *shifted = list->head;
+    
+  if (shifted == list->tail) {
+    // list now empty
+    list->head = NULL;
+    list->tail = NULL;
+    list->count = 0;
+  } else {
+    list->head = list->head->next;
+    list->count--;
+  }
+  return shifted->val;
+}
+
+
 void *list_iter(LIST *list, void **iter) {
   if (*iter == NULL) {
     if (list->head && list->tail) {
@@ -36,8 +109,8 @@ void *list_iter(LIST *list, void **iter) {
       return NULL;
     }
   } else {
-    void *val = ((struct node*)(*iter))->val;
-    *iter = ((struct node*)(*iter))->next;
+    void *val = ((LIST_NODE*)(*iter))->val;
+    *iter = ((LIST_NODE*)(*iter))->next;
     return val;
   }
 }
@@ -51,9 +124,7 @@ int list_count(LIST *list) {
   return list->count;
 }
 
-
-MULTISTRING *ms_new(BISTACK *bs) {
-  MULTISTRING *ms = (MULTISTRING*)bistack_alloc(bs, sizeof(MULTISTRING));
+MULTISTRING *ms_init(MULTISTRING *ms, BISTACK *bs) {
   ms->stringbufs.head = NULL;
   ms->stringbufs.tail = NULL;
   ms->totallen = 0;
@@ -61,7 +132,15 @@ MULTISTRING *ms_new(BISTACK *bs) {
   return ms;
 }
 
+MULTISTRING *ms_new(BISTACK *bs) {
+  MULTISTRING *ms = (MULTISTRING*)bistack_alloc(bs, sizeof(MULTISTRING));
+  return ms_init(ms, bs);
+}
+
 MULTISTRING *ms_writechar(MULTISTRING *ms, BISTACK *bs, char ch) {
+  /**
+   * Writes character `ch` into the MULTISTRING *ms allocated in BISTACK *bs;
+   */
   char *buf;
   if (ms->bufpos == MULTISTRING_BUFSIZE) {
     // a new char* buffer is required
@@ -76,9 +155,9 @@ MULTISTRING *ms_writechar(MULTISTRING *ms, BISTACK *bs, char ch) {
   return ms;
 }
 
-hash_t ms_hash(MULTISTRING *ms) {
+uint32_t ms_hash(MULTISTRING *ms) {
   unsigned int len = ms->totallen;
-  struct node *itr = ms->stringbufs.head;
+  LIST_NODE *itr = ms->stringbufs.head;
   // hash initialization value from utils.h
   uint32_t hash = FNV1_32_INIT;
 
@@ -91,7 +170,7 @@ hash_t ms_hash(MULTISTRING *ms) {
   return hash;
 }
 
-char ms_iterchar(MULTISTRING *ms, int *char_index, struct node **buf) {
+char ms_iterchar(MULTISTRING *ms, int *char_index, struct listnode **buf) {
   if (*char_index >= ms->totallen) {
     return -1;
   }
@@ -112,12 +191,12 @@ char ms_iterchar(MULTISTRING *ms, int *char_index, struct node **buf) {
 
 char *ms_assemble(MULTISTRING *ms, char *buff) {
   uint16_t bufpos=0;
-  for (struct node* itr=ms->stringbufs.head;
+  for (struct listnode* itr=ms->stringbufs.head;
        itr!=NULL;
        itr = itr->next) {
     for (uint16_t itrbufpos=0;
-	 itrbufpos < MULTISTRING_BUFSIZE && bufpos < ms->totallen;
-	 bufpos++, itrbufpos++) {
+	      itrbufpos < MULTISTRING_BUFSIZE && bufpos < ms->totallen;
+	      bufpos++, itrbufpos++) {
       buff[bufpos] = ((char*)itr->val)[itrbufpos];
     }
   }
@@ -126,21 +205,29 @@ char *ms_assemble(MULTISTRING *ms, char *buff) {
 }
 
 int ms_strncmp(MULTISTRING *ms, char *strb, int n) {
-  for (struct node* itr=ms->stringbufs.head;
+  for (struct listnode* itr=ms->stringbufs.head;
        itr!=NULL;
        itr = itr->next) {
     for (int itrbufpos=0;
-	 itrbufpos < MULTISTRING_BUFSIZE && n--;
-	 strb++, itrbufpos++) {
+	       itrbufpos < MULTISTRING_BUFSIZE && n--;
+	       strb++, itrbufpos++) {
       char ms_char = ((char*)itr->val)[itrbufpos];
       if (ms_char < *strb) {
-	return -1;
+	      return -1;
       } else if (ms_char > *strb) {
-	return 1;
+	      return 1;
       }
     }
   }
   return 0;
+}
+
+void *list_first(LIST *list) {
+  if (list->head != NULL) {
+    return list->head->val;
+  } else {
+    return NULL;
+  }
 }
 
 
@@ -195,7 +282,7 @@ static char *test_ms_iter() {
   }
   
   int charindex=0;
-  struct node *buf = NULL;
+  LIST_NODE *buf = NULL;
   for (int i=0; i<sizeof(sample_builtin_method_names)/sizeof(char*); i++) {
     for (int j=0; j<strlen(sample_builtin_method_names[i]); j++) {
       char c = ms_iterchar(ms, &charindex, &buf);
@@ -255,3 +342,4 @@ int main(int argc, char **argv) {
 }
 
 #endif
+

@@ -6,72 +6,29 @@
 
 #ifndef PSTR
 #define PSTR(X) ((char*)(X))
-
 #define strncmp_P strncmp
 #define strncpy_P strncpy
-
 #endif
 
+#ifndef TRUE
+#define TRUE 1
+#endif
 
-#define BIT31 ((int32_t)1<<31)
-#define BIT30 ((int32_t)1<<30)
-#define BIT15 ((int16_t)1<<15)
-#define BIT14 ((int16_t)1<<14)
+#ifndef FALSE
+#define FALSE 0
+#endif
 
-//bistack.c debug
-//#define BS_DEBUG(...) fprintf(stderr, __VA_ARGS__)
-#define BS_DEBUG(...)
-
-#define THING_INT (1<<15)
-#define THING_TYPE (1<<14)
-#define THING_SYMBOL (0<<14)
-
-typedef union {
-  struct {
-    uint8_t type : 2;
-    uint8_t other : 7;
-  };
-  struct {
-    uint8_t symoltype : 2;
-    uint8_t symbolmod : 7;
-  };
-  struct {
-    uint8_t listtype : 2;
-    uint8_t listmod : 2;
-    uint8_t listlen : 5;
-  };
-} THING_MODIFIER;
-
-#define SYMBOL_MOD_DBLQUOTE 0
-#define SYMBOL_MOD_QUOTE 1
-#define SYMBOL_MOD_COMMA 2
-#define LIST_MOD 
-
-#define Q16_BE(X) (((uint16_t)(X)>>8) | ((uint16_t)(X)<<8))
-
-typedef uint16_t hash_t;
-
-
-// avl keys are used as symbol identifiers
-typedef hash_t SYMBOL;
-
-// values are generic ptrs
-typedef void* value_t;
-typedef value_t VALUE;
-
-typedef struct keyvalue_t {
-  key_t key;
-  value_t value;
-} KEYVALUE;
+typedef char bool;
 
 // low 2 bits of AST type are numeration
 // high 6 bits are bitfield
-#define AST_SYMBOL ((uint8_t) 1)
-#define AST_INTEGER (AST_SYMBOL + 1)
-#define AST_LIST (AST_SYMBOL + 2)
-#define AST_ENDOFLIST (AST_SYMBOL + 3)
-#define AST_COMMENT (AST_SYMBOL + 4)
+#define AST_NONE  0
+#define AST_SYMBOL 1
+#define AST_INTEGER 2
+#define AST_LIST 3
+#define AST_STRING 4
 
+#define AST_NOPREFIX 0
 #define AST_AT ((uint8_t) 1)
 #define AST_DOUBLEQUOTE (AST_AT + 1)
 #define AST_QUASIQUOTE (AST_AT + 2)
@@ -80,6 +37,7 @@ typedef struct keyvalue_t {
 #define AST_AMPERSAND (AST_AT + 5)
 #define AST_COMMA_AT (AST_AT + 6)
 #define AST_QUOTE_HASH (AST_AT + 7)
+#define AST_SINGLEQUOTE (AST_AT + 8)
 
 static const char AST_1PREFIX[] = { 'X', '@', '\"', '`', '\'', ',', '&', 0, 0 };
 #define AST_2PREFIX_OFFSET (sizeof(AST_1PREFIX) / sizeof(char))
@@ -97,39 +55,71 @@ static const char AST_2PREFIX[][2] = { {'X', 'X'},
    (X).prefix == AST_QUOTE_HASH ? PSTR("'#") : PSTR(""))
 
 #define AST_POSTFIX_STR(X) ((X).prefix == AST_DOUBLEQUOTE ? PSTR("\"") : PSTR(""))	
-static inline SYMBOL next_symbol(SYMBOL sym) {
-  // high bit of symbol is reserved
-  return (sym+1) & ~(1 << (sizeof(SYMBOL)-1));
-}
 
-typedef uint8_t AST_TYPE;
+#define BIT31 ((int32_t)1<<31)
+#define BIT30 ((int32_t)1<<30)
+#define BIT15 ((int16_t)1<<15)
+#define BIT14 ((int16_t)1<<14)
+
+//bistack.c debug
+//#define BS_DEBUG(...) fprintf(stderr, __VA_ARGS__)
+#define BS_DEBUG(...)
 
 typedef struct ast_type {
   union {
     struct {
-      uint8_t type : 4;
+      uint8_t type : 2;
       uint8_t prefix : 4;
+      uint8_t terminator : 1;
      };
      uint8_t bitfield;
   };
-} AST_COMPLEXTYPE;
+} AST_TYPE;
   
+#define AST_NOTYPE ((AST_TYPE) {\
+  .type = AST_NONE, \
+  .prefix = AST_NONE, \
+  .terminator = AST_NONE, \
+  })
+
+#define AST_TERMINATOR ((AST_TYPE){\
+  .type = AST_NONE,\
+  .prefix = AST_NONE,\
+  .terminator = TRUE,\
+  })
+
+typedef union {
+  /* Symbol Type */
+  struct {
+    uint16_t type : 2;
+    uint16_t length : 6;
+    uint16_t hash : 8;
+  } Symbol;
+
+  /* Integer type */
+  struct {
+    uint16_t type : 2;  
+    uint16_t sign : 1;
+    uint16_t value : 13;
+  } Integer;
+
+  /* List Type */
+  struct {
+    uint16_t type: 2;
+    uint16_t prefix : 4;
+    uint16_t length : 10;
+  } List;
+
+  struct {
+    uint16_t type : 2;
+    uint16_t rest : 14;
+  } Common;
+} CELLHEADER;
+#endif
+
 
 #define BREAKPOINT \
   { \
   char c = *(char*)0; \
   }
 
-typedef struct ast_node {
-  AST_TYPE type;
-  union {
-    struct {
-      struct ast_node **astvector;
-      uint16_t length;
-    };
-    int32_t intval;
-    SYMBOL symbol;
-  };
-} AST_NODE;
-
-#endif

@@ -1,0 +1,34 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+
+    {
+        "name": "bistack test",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceRoot}/test/bistack_test",
+        "args": [],
+        "stopAtEntry": false,
+        "cwd": "${workspaceRoot}",
+        "environment": [],
+        "externalConsole": true,
+        "MIMode": "lldb"
+    },
+    {
+        "name": "reader test",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceRoot}/test/reader_test",
+        "args": [],
+        "stopAtEntry": false,
+        "cwd": "${workspaceRoot}",
+        "environment": [],
+        "externalConsole": true,
+        "MIMode": "lldb",
+        "preLaunchTask": "run_reader_test",
+        "osx": {
+         "MIMode": "lldb"
+        }
+    }
+    ]
+}

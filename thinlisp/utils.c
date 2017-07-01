@@ -17,14 +17,14 @@ uint32_t fnv_32_buf(void *datap, int datalen, uint32_t offset_basis) {
   return hash;
 }
 
-hash_t hashstr(char *str, int strlen) {
+uint32_t hashstr(char *str, int strlen) {
   return fnv_32_buf(str, strlen, FNV1_32_INIT);
 }
 
-uint16_t hashstr_16(char *str, int strlen) {
-  // this reduces to 16 bits
-  hash_t hash = fnv_32_buf(str, strlen, FNV1_32_INIT);
-  hash = (hash>>16) ^ (hash & MASK_16);
+uint16_t hashstr_8(char *str, int strlen) {
+  // this reduces to 8 bits hash
+  uint32_t hash = fnv_32_buf(str, strlen, FNV1_32_INIT);
+  hash = (((hash>>8) ^ hash) & TINY_MASK(8));
   return (uint16_t)hash;
 }
 
@@ -60,7 +60,7 @@ uint8_t count_ones_16(uint16_t num) {
 }
 
 
-uint32_t bloomhash(hash_t num) {
+uint32_t bloomhash(uint32_t num) {
   uint32_t x = num 
     & ((num << 13) | 0x1fff)
     & ((num >> 6) | 0xfc000000)
@@ -80,7 +80,7 @@ int tests_run = 0;
 
 static char * test_hash_to_symbol() {
   int builtin_count = sizeof(sample_builtin_method_names) / sizeof(char*);
-  symbol_t hashes[builtin_count];
+  uint32_t hashes[builtin_count];
   for (int i=0; i<builtin_count; i++) {
     hash_t hash = hashstr(sample_builtin_method_names[i],
 			   strlen(sample_builtin_method_names[i]));

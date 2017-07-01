@@ -4,112 +4,141 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <assert.h>
+#include <stdio.h>
 #include "defines.h"
 #include "utils.h"
 #include "list.h"
 #include "bistack.h"
-#include "avl.h"
+
+
+typedef struct reader READER;
+typedef struct reader_context READER_CONTEXT;
+
+typedef struct reader_symbolcontext {
+  CELLHEADER *cellheader;
+  char is_escaped;
+} READER_SYMBOL_CONTEXT;
+
+typedef struct reader_integercontext {
+  CELLHEADER *cellheader;
+} READER_INTEGER_CONTEXT;
 
 typedef struct reader_listcontext {
-  AST_TYPE type;
-  struct reader_listcontext *next;
-  LIST *list;
+  CELLHEADER *cellheader;
+  READER_CONTEXT *cell;
 } READER_LIST_CONTEXT;
 
+typedef struct reader_context {
+  struct {
+    AST_TYPE asttype;
+    union {
+      READER_SYMBOL_CONTEXT *symbol;
+      READER_INTEGER_CONTEXT *integer;
+      READER_LIST_CONTEXT *list;
+    };
+  };
+} READER_CONTEXT;
 
-typedef struct reader_atomcontext {
-  MULTISTRING *string;
-  AST_TYPE type;
-  char escaped;
-} READER_ATOM_CONTEXT;
 
-
-typedef struct reader {
-  BISTACK *bs;
-  READER_LIST_CONTEXT *root_list;
-  READER_LIST_CONTEXT *current_list;
-  READER_ATOM_CONTEXT *current_atom;
-  
-  // Symbol String table (as opposed to bound-value table)
-  AVL_NODE *obhash; // like oblist, but avl tree
-  AVL_NODE *global_obhash;
-
+typedef struct environment { 
   // total strlen of the non-global symbols
   uint16_t total_symbols;
   uint16_t total_strlen;
   uint16_t total_astnodes;
   
+  BISTACK *bs;
+
   void *streamobj;
   char (*getc)(void *streamobj);
-  uint8_t in_comment;
+
   char ungetbuff[4];
   uint8_t ungetbuff_i;
+} ENVIRONMENT;
+
+typedef struct reader {
+  READER *parent;
+  ENVIRONMENT *environment;
+
+  uint8_t in_comment;
+
+  READER_CONTEXT *cell;
+
 } READER;
 
-READER *reader_new(BISTACK *bs);
+ENVIRONMENT *environment_new(BISTACK *bs);
+READER *reader_new(ENVIRONMENT *e);
+char reader_consume_comment(READER *reader);
 
 
-#include <stdio.h>
-static inline char reader_getc(READER *r) {
+static inline char environment_getc(ENVIRONMENT *e) {
   char c;
-  if (r->ungetbuff_i) {
-    c = r->ungetbuff[--r->ungetbuff_i];
+  if (e->ungetbuff_i) {
+    c = e->ungetbuff[--e->ungetbuff_i];
   } else {
-    c = r->getc(r->streamobj);
+    c = e->getc(e->streamobj);
   }
   return c;
 }
 
+static inline char reader_getc(READER *r) {
+  return environment_getc(r->environment);
+}
+
+static inline char environment_ungetc(ENVIRONMENT *e, char c) {
+  assert(e->ungetbuff_i < sizeof(e->ungetbuff));
+  e->ungetbuff[e->ungetbuff_i++] = c;
+  return c;
+}
 static inline char reader_ungetc(READER *r, char c) {
-  assert(r->ungetbuff_i < sizeof(r->ungetbuff));
-  r->ungetbuff[r->ungetbuff_i++] = c;
-  return c;
+  return environment_ungetc(r->environment, c);
 }
 
-static inline char reader_peekc(READER *r) {
-  if (r->ungetbuff_i) {
-    return r->ungetbuff[r->ungetbuff_i-1];
+static inline char environment_peekc(ENVIRONMENT *e) {
+  if (e->ungetbuff_i) {
+    return e->ungetbuff[e->ungetbuff_i-1];
   } else {
-    char c = r->getc(r->streamobj);
-    return reader_ungetc(r, c);
+    char c = environment_getc(e);
+    return environment_ungetc(e, c);
   }
 }
-
-AST_NODE *read_atom(READER *reader);
-AST_NODE *reader_continue(READER *reader);
-
-void reader_pprint(READER *reader, AST_NODE *node, uint8_t indentspaces);
-
-static inline void reader_setio(READER *reader, char (*getc)(void *ctx)) {
-  reader->getc = getc;
+static inline char reader_peekc(READER *r) {
+  return environment_peekc(r->environment);
 }
 
-static inline int is_whitespace(char c) {
+static inline void environment_setio(ENVIRONMENT *e, char (*getc)(void *ctx), void *streamobj) {
+  e->getc = getc;
+  e->streamobj = streamobj;
+}
+
+static inline void reader_setio(READER *r, char (*getc)(void *ctx), void *streamobj) {
+  environment_setio(r->environment, getc, streamobj);
+}
+
+static inline char is_whitespace(char c) {
   return c == '\n' || c == ' ' || c == '\t';
 }
 
-static inline int is_standard_char(char c) {
+static inline char is_standard_char(char c) {
   return c >= '!' && c <= '~';
 }
 
-static inline int is_non_symbol(char c) {
-  return c != ' ' && c != ')' && c != '(';
+static inline char is_non_symbol(char c) {
+  return c != '\n' && c != '\t' && c != ' ' && c != ')' && c != '(';
 }
 
-static inline char next_non_ws(READER *reader) {
+static inline char next_non_ws(ENVIRONMENT *e) {
   /*
    * reads characters until a non-whitespace character is found.
    */
   char c = ' ';
   while (c != -1 && is_whitespace(c)) {
-    c = reader_getc(reader);
+    c = environment_getc(e);
   }
   if (c != -1) {
     // rewind 1
-    reader_ungetc(reader, c);
+    environment_ungetc(e, c);
   }
   return c;
 }
 
 #endif
-
