@@ -48,16 +48,19 @@ typedef struct environment {
   
   BISTACK *bs;
 
-  void *streamobj;
-  char (*getc)(void *streamobj);
-
-  char ungetbuff[4];
-  uint8_t ungetbuff_i;
 } ENVIRONMENT;
 
 typedef struct reader {
-  READER *parent;
   ENVIRONMENT *environment;
+
+  void *getc_streamobj;
+  char (*getc)(void *getc_streamobj);
+
+  void *putc_streamobj;
+  char (*putc)(void *putc_streamobj, char c);
+
+  char ungetbuff[4];
+  uint8_t ungetbuff_i;
 
   uint8_t in_comment;
 
@@ -69,49 +72,50 @@ ENVIRONMENT *environment_new(BISTACK *bs);
 READER *reader_new(ENVIRONMENT *e);
 char reader_consume_comment(READER *reader);
 
-
-static inline char environment_getc(ENVIRONMENT *e) {
-  char c;
-  if (e->ungetbuff_i) {
-    c = e->ungetbuff[--e->ungetbuff_i];
-  } else {
-    c = e->getc(e->streamobj);
-  }
-  return c;
-}
-
 static inline char reader_getc(READER *r) {
-  return environment_getc(r->environment);
-}
-
-static inline char environment_ungetc(ENVIRONMENT *e, char c) {
-  assert(e->ungetbuff_i < sizeof(e->ungetbuff));
-  e->ungetbuff[e->ungetbuff_i++] = c;
+  char c;
+  if (r->ungetbuff_i) {
+    c = r->ungetbuff[--r->ungetbuff_i];
+  } else {
+    c = r->getc(r->getc_streamobj);
+  }
   return c;
 }
+
 static inline char reader_ungetc(READER *r, char c) {
-  return environment_ungetc(r->environment, c);
+  assert(r->ungetbuff_i < sizeof(r->ungetbuff));
+  r->ungetbuff[r->ungetbuff_i++] = c;
+  return c;
 }
 
-static inline char environment_peekc(ENVIRONMENT *e) {
-  if (e->ungetbuff_i) {
-    return e->ungetbuff[e->ungetbuff_i-1];
+static inline char reader_peekc(READER *r) {
+  if (r->ungetbuff_i) {
+    return r->ungetbuff[r->ungetbuff_i-1];
   } else {
-    char c = environment_getc(e);
-    return environment_ungetc(e, c);
+    char c = reader_getc(r);
+    return reader_ungetc(r, c);
   }
 }
-static inline char reader_peekc(READER *r) {
-  return environment_peekc(r->environment);
+
+static inline void reader_set_getc(READER *r, char (*getc)(void *), void *getc_streamobj) {
+  r->getc = getc;
+  r->getc_streamobj = getc_streamobj;
 }
 
-static inline void environment_setio(ENVIRONMENT *e, char (*getc)(void *ctx), void *streamobj) {
-  e->getc = getc;
-  e->streamobj = streamobj;
+static inline void reader_set_putc(READER *r, char (*putc)(void *, char), void *putc_streamobj) {
+  r->putc = putc;
+  r->putc_streamobj = putc_streamobj;
 }
 
-static inline void reader_setio(READER *r, char (*getc)(void *ctx), void *streamobj) {
-  environment_setio(r->environment, getc, streamobj);
+
+static inline void reader_putc(READER *r, char c) {
+  r->putc(r->putc_streamobj, c);
+}
+
+static inline void reader_putstr(READER *r, char *str) {
+  while (*str) {
+    r->putc(r->putc_streamobj, *str++);
+  }
 }
 
 static inline char is_whitespace(char c) {
@@ -126,17 +130,17 @@ static inline char is_non_symbol(char c) {
   return c != '\n' && c != '\t' && c != ' ' && c != ')' && c != '(';
 }
 
-static inline char next_non_ws(ENVIRONMENT *e) {
+static inline char next_non_ws(READER *r) {
   /*
    * reads characters until a non-whitespace character is found.
    */
   char c = ' ';
   while (c != -1 && is_whitespace(c)) {
-    c = environment_getc(e);
+    c = reader_getc(r);
   }
   if (c != -1) {
     // rewind 1
-    environment_ungetc(e, c);
+    reader_ungetc(r, c);
   }
   return c;
 }

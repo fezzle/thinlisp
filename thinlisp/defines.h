@@ -46,13 +46,13 @@ static const char AST_2PREFIX[][2] = { {'X', 'X'},
 				       {'\'', '#' } };
 
 #define AST_PREFIX_STR(X)				\
-  ((X).prefix == AST_AT ? PSTR("@") :			\
-   (X).prefix == AST_DOUBLEQUOTE ? PSTR("\"") :			\
-   (X).prefix == AST_QUASIQUOTE ? PSTR("`") :			\
-   (X).prefix == AST_COMMA ? PSTR(",") :			\
-   (X).prefix == AST_AMPERSAND ? PSTR("&") :			\
-   (X).prefix == AST_COMMA_AT ? PSTR(",@") :			\
-   (X).prefix == AST_QUOTE_HASH ? PSTR("'#") : PSTR(""))
+  ((X) == AST_AT ? PSTR("@") :			\
+   (X) == AST_DOUBLEQUOTE ? PSTR("\"") :			\
+   (X) == AST_QUASIQUOTE ? PSTR("`") :			\
+   (X) == AST_COMMA ? PSTR(",") :			\
+   (X) == AST_AMPERSAND ? PSTR("&") :			\
+   (X) == AST_COMMA_AT ? PSTR(",@") :			\
+   (X) == AST_QUOTE_HASH ? PSTR("'#") : PSTR(""))
 
 #define AST_POSTFIX_STR(X) ((X).prefix == AST_DOUBLEQUOTE ? PSTR("\"") : PSTR(""))	
 
@@ -115,6 +115,14 @@ typedef union {
     uint16_t rest : 14;
   } Common;
 } CELLHEADER;
+
+typedef struct cell {
+  CELLHEADER header;
+  union {
+    char str[0];
+    CELLHEADER cells[0];
+  };
+} CELL;
 #endif
 
 

@@ -50,25 +50,6 @@ inline char q16log2(uint16_t v) {
   return r;
 }
 
-uint8_t count_ones_16(uint16_t num) {
-  uint16_t x = num;
-  x = (x & (0x5555)) + ((x >> 1) & (0x5555));
-  x = (x & (0x3333)) + ((x >> 2) & (0x3333));
-  x = (x & (0x0f0f)) + ((x >> 4) & (0x0f0f));
-  x = (x & (0x00ff)) + ((x >> 8) & (0x00ff));
-  return (uint8_t)x;
-}
-
-
-uint32_t bloomhash(uint32_t num) {
-  uint32_t x = num 
-    & ((num << 13) | 0x1fff)
-    & ((num >> 6) | 0xfc000000)
-    & ((num << 17) | 0x1ffff)
-    & ((num >> 12) | 0xfff00000);
-  return x;
-}
-
 
 #ifdef UTILS_TEST
 #include <stdio.h>
@@ -103,36 +84,6 @@ static char * test_hash_to_symbol() {
   printf("\n");
   return 0;
 }
-
-static char * test_bloom() {
-  const int tablecount = 10;
-  hash_t blooms[tablecount];
-  int builtins_count = sizeof(sample_builtin_method_names) / sizeof(char*);
-  int builtins_pertable = builtins_count/tablecount;
-  hash_t hashtables[tablecount][builtins_pertable];
-  
-
-  printf("hashes per table: %d\n", builtins_pertable);
-  for (int i=0; i<tablecount; i++) {
-    blooms[i] = 0;
-  }
-
-  for (int j=0; j<tablecount; j++) {
-    for (int i=0; i<builtins_pertable; i++) {
-      int reali = j*builtins_pertable + i;
-      hashtables[j][i] = hashstr(sample_builtin_method_names[reali],
-				 strlen(sample_builtin_method_names[reali]));
-      blooms[j] |= bloomhash(hashtables[j][i]);
-    }
-  }
-
-  for (int i=0; i<tablecount; i++) {
-    printf("bloom: 0x%08x\n", blooms[i]);
-  }
-  printf("\n");
-  return 0;
-}
-
 
 static char *all_tests() {
   mu_run_test(test_hash_to_symbol);

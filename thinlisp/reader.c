@@ -12,9 +12,6 @@
 ENVIRONMENT *environment_new(BISTACK *bs) {
   ENVIRONMENT *e = bistack_alloc(bs, sizeof(ENVIRONMENT));
   e->bs = bs;
-  e->ungetbuff_i = 0;
-  e->streamobj = NULL;
-
   e->total_symbols = 0;
   e->total_strlen = 0;
   e->total_astnodes = 0;
@@ -25,11 +22,18 @@ READER *reader_new(ENVIRONMENT *e) {
   READER *r = bistack_alloc(e->bs, sizeof(READER));
   r->environment = e;
   r->in_comment = FALSE;
+
+  r->ungetbuff_i = 0;
+  r->putc_streamobj = NULL;
+  r->putc = NULL;
+  r->getc_streamobj = NULL;
+  r->getc = NULL;
+
   return r;
 }
  
 AST_TYPE reader_next_cell(READER *reader) {
-  if (next_non_ws(reader->environment) == -1) {
+  if (next_non_ws(reader) == -1) {
     return AST_NOTYPE;
   }
 
@@ -123,7 +127,7 @@ bool reader_integer_context(READER *reader, READER_CONTEXT *reader_context) {
       return FALSE;
 
     } else if (value == 0 &&  (c == '-' || c == '+')) {
-      header->Integer.sign = (c == '-' ? -1 : 1);
+      header->Integer.sign = (c == '-' ? 0 : 1);
 
     } else if (c >= '0' && c <= '9') {
       value = value * 10 + (c - '0');
@@ -159,7 +163,9 @@ bool reader_symbol_context(READER *reader, READER_CONTEXT *reader_context) {
     } else if (symbol_context->is_escaped) {
       ((char*)(&header[1]))[header->Symbol.length++] = c;
     
-    } else if ((c == '"' && is_double_quote) || is_whitespace(c)) {
+    } else if (
+        (c == '"' && is_double_quote) || 
+        ((is_whitespace(c) || (c == ')')) && !is_double_quote)) {
       header->Symbol.hash = hashstr_8((char*)(&header[1]), header->Symbol.length);
       // we've been writing ahead in the bistack buffer, now must allocate everything written to
       bistack_allocf(reader->environment->bs, header->Symbol.length);
@@ -169,6 +175,14 @@ bool reader_symbol_context(READER *reader, READER_CONTEXT *reader_context) {
       ((char*)(&header[1]))[header->Symbol.length++] = c;
     }
   }
+}
+
+void putc_tens(READER *r, uint16_t value, uint16_t tens) {
+  char c='0';
+  for (; value > tens; value -= tens) {
+    c++;
+  }
+  reader_putc(r, c);
 }
 
 
@@ -250,6 +264,7 @@ bool reader_read(READER *reader) {
       } else if (asttype.terminator) {
         // list terminator
         if (parent_reader_context) {
+          parent_reader_context->list->cellheader->List.length++;
           reader_context = parent_reader_context;
           list_shift(reader_context_stack);
           parent_reader_context = list_first(reader_context_stack);
@@ -303,6 +318,80 @@ bool reader_read(READER *reader) {
 }
 
 
+void reader_pprint(READER *reader) {
+  ENVIRONMENT *e = reader->environment;
+  lassert(reader->putc != NULL, READER_STATE_ERROR);
+
+  uint8_t indent = 0;
+
+  LIST *cellstack = list_new(e->bs);
+
+  typedef struct frame {
+    CELLHEADER *cellheader;
+    uint8_t subcellcounter;
+  } FRAME;
+
+  CELLHEADER *cellheader = (
+    reader->cell->asttype.type == AST_LIST ? reader->cell->list->cellheader :
+    reader->cell->asttype.type == AST_SYMBOL ? reader->cell->symbol->cellheader :
+    reader->cell->integer->cellheader);
+  while (cellheader) {
+    FRAME *parentcellheader = list_first(cellstack);
+    if (cellheader->Symbol.type == AST_SYMBOL) {
+      for (int i=0; i<cellheader->Symbol.length; i++) {
+        reader_putc(reader, ((char*)(&cellheader[1]))[i]);
+      }
+      reader_putc(reader, ' ');
+      cellheader = (void*)cellheader + sizeof(cellheader) + cellheader->Symbol.length;
+      if (parentcellheader) {
+        parentcellheader->subcellcounter--;
+      }
+    }
+    else if (cellheader->Integer.type == AST_INTEGER) {
+      reader_putc(reader, cellheader->Integer.sign ? '+' : '-');
+      uint16_t value = cellheader->Integer.value;
+      putc_tens(reader, value, 10000);
+      putc_tens(reader, value, 1000);
+      putc_tens(reader, value, 100);
+      putc_tens(reader, value, 10);
+      putc_tens(reader, value, 1);
+      reader_putc(reader, ' ');
+      cellheader = (void*)cellheader + sizeof(cellheader);
+      if (parentcellheader) {
+        parentcellheader->subcellcounter--;
+      } 
+    } 
+    else if (cellheader->List.type == AST_LIST) {
+      for (uint8_t n=0; n<indent; n++) {
+        reader_putc(reader, ' ');
+      }
+      reader_putstr(reader, AST_PREFIX_STR(cellheader->List.prefix));
+      reader_putc(reader, '(');
+
+      
+      FRAME *newframe = bistack_alloc(e->bs, sizeof(FRAME));
+      newframe->subcellcounter = cellheader->List.length;
+      newframe->cellheader = cellheader;
+      list_unshift(cellstack, e->bs, newframe);
+      cellheader = (CELLHEADER*)&cellheader[1];
+
+      if (parentcellheader) {
+        parentcellheader->subcellcounter--;
+      }
+      indent++;
+    }
+
+    if (parentcellheader == NULL) {
+      reader_putc(reader, '\n');
+      cellheader = NULL;
+    } else if (/*parentcellheader != null &&*/parentcellheader->subcellcounter == 0) {
+      reader_putc(reader, ')');
+      reader_putc(reader, '\n');
+      cellheader = list_shift(cellstack);
+    }
+  }
+}
+
 
 #ifdef READER_TEST
 #include <stdio.h>
@@ -320,13 +409,23 @@ char mygetc(void *streamobj) {
   }
 }
 
+char myputc(void *streamobj, char c) {
+  static char lastchar = 0;
+  if (lastchar == '\n') {
+    printf("***   ");
+  }
+  printf("%c", c);
+  lastchar = c;
+  return c;
+}
+
 static char * test_reader_sample() {
    BISTACK *bs = bistack_new(8096);
    bistack_pushdir(bs, BS_BACKWARD);
    ENVIRONMENT *environment = environment_new(bs);
    READER *reader = reader_new(environment);
    FILE *streamobj = fopen("tests/sample.lisp", "rb");
-   reader_setio(reader, mygetc, streamobj);
+   reader_set_getc(reader, mygetc, streamobj);
    bool res = reader_read(reader);
    mu_assert("reader should complete", res);
    mu_assert("reader cell should not be null", reader->cell != NULL);
@@ -336,8 +435,25 @@ static char * test_reader_sample() {
 }
 
 
+
+static char * test_reader_sample_pprint() {
+   BISTACK *bs = bistack_new(8096);
+   bistack_pushdir(bs, BS_BACKWARD);
+   ENVIRONMENT *environment = environment_new(bs);
+   READER *reader = reader_new(environment);
+   FILE *streamobj = fopen("tests/sample.lisp", "rb");
+   reader_set_getc(reader, mygetc, streamobj);
+   reader_set_putc(reader, myputc, NULL);
+   reader_read(reader);
+   reader_pprint(reader);
+   mu_assert("read type should be list", reader->cell->asttype.type == AST_LIST);
+   return 0;
+}
+
+
 static char *all_tests() {
   mu_run_test(test_reader_sample);
+  mu_run_test(test_reader_sample_pprint);
   return 0;
 }
 
