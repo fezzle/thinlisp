@@ -38,18 +38,20 @@ AST_TYPE reader_next_cell(READER *reader) {
   }
 
   AST_TYPE asttype = AST_NOTYPE;
-  uint8_t chars_read = 0;
+  char chars_read_buffer[4];
+  char chars_read = 0;
   while (TRUE) {
     char c = reader_getc(reader);
+    lassert(chars_read < sizeof(chars_read_buffer), READER_STATE_ERROR);
+    chars_read_buffer[chars_read++] = c;
+
     if (c == -1) {
       // put back all the characters we read
-      while (chars_read-->0) {
-        reader_ungetc(reader, c);
+      while (chars_read-- > 0) {
+        reader_ungetc(reader, chars_read_buffer[chars_read]);
       }
       return AST_NOTYPE;
-    } else {
-      chars_read++;
-    }
+    } 
 
     switch (c) {
     case '"':
@@ -82,6 +84,14 @@ AST_TYPE reader_next_cell(READER *reader) {
       asttype.prefix = AST_AMPERSAND;
       continue;
 
+    case '+': 
+      asttype.prefix = AST_PLUS;
+      continue;
+    
+    case '-': 
+      asttype.prefix = AST_MINUS;
+      continue;
+
     case ';':
       lassert(
         asttype.bitfield == AST_NOTYPE.bitfield, 
@@ -97,16 +107,23 @@ AST_TYPE reader_next_cell(READER *reader) {
 
     case ')':
       return AST_TERMINATOR;
+
+    case ' ':
+      // space encountered while reading start of new cell.  maybe a symbol?
+      while (chars_read-- > 0) {
+        reader_ungetc(reader, chars_read_buffer[chars_read]);
+      }
+      return (AST_TYPE){.type=AST_SYMBOL, .prefix=AST_NONE, .terminator=FALSE};
         
     default:
-      if (((c & 0b110000) && (c >= '0' && c <= '9')) || (c == '-') || (c == '+')) {
+      if (((c & 0b110000) && (c >= '0' && c <= '9'))) {
         reader_ungetc(reader, c);
-        return (AST_TYPE){.type=AST_INTEGER, .prefix=AST_NONE, .terminator=FALSE};
+        return (AST_TYPE){.type=AST_INTEGER, .prefix=asttype.prefix, .terminator=FALSE};
 
       } else if ((c >= '<') && (c <= 'z')) {
         reader_ungetc(reader, c);
         return (AST_TYPE){.type=AST_SYMBOL, .prefix=asttype.prefix, .terminator=FALSE};
-
+      
       } else {
         lerror(READER_SYNTAX_ERROR, "unhandled: %c(%hhx)\n", c, c);
       }
@@ -163,18 +180,23 @@ bool reader_symbol_context(READER *reader, READER_CONTEXT *reader_context) {
     } else if (symbol_context->is_escaped) {
       ((char*)(&header[1]))[header->Symbol.length++] = c;
     
-    } else if (
-        (c == '"' && is_double_quote) || 
-        ((is_whitespace(c) || (c == ')')) && !is_double_quote)) {
-      header->Symbol.hash = hashstr_8((char*)(&header[1]), header->Symbol.length);
-      // we've been writing ahead in the bistack buffer, now must allocate everything written to
-      bistack_allocf(reader->environment->bs, header->Symbol.length);
-      return TRUE;
+    } else if (c == '"' && is_double_quote) {
+      break;
+  
+    } else if (!is_double_quote &&
+        (is_whitespace(c) || (c == ')') || (c == ';'))) {
+      // put back character that ends non-double-quoted symbol
+      reader_ungetc(reader, c);
+      break;
 
     } else {
       ((char*)(&header[1]))[header->Symbol.length++] = c;
     }
   }
+  header->Symbol.hash = hashstr_8((char*)(&header[1]), header->Symbol.length);
+  
+  bistack_allocf(reader->environment->bs, header->Symbol.length);
+  return TRUE;
 }
 
 void putc_tens(READER *r, uint16_t value, uint16_t tens) {
@@ -265,9 +287,9 @@ bool reader_read(READER *reader) {
         // list terminator
         if (parent_reader_context) {
           parent_reader_context->list->cellheader->List.length++;
-          reader_context = parent_reader_context;
+          reader_context = NULL;
           list_shift(reader_context_stack);
-          parent_reader_context = list_first(reader_context_stack);
+          continue;
         } else {
           return 1;
         }
@@ -367,7 +389,6 @@ void reader_pprint(READER *reader) {
       }
       reader_putstr(reader, AST_PREFIX_STR(cellheader->List.prefix));
       reader_putc(reader, '(');
-
       
       FRAME *newframe = bistack_alloc(e->bs, sizeof(FRAME));
       newframe->subcellcounter = cellheader->List.length;
@@ -383,7 +404,9 @@ void reader_pprint(READER *reader) {
 
     if (parentcellheader == NULL) {
       reader_putc(reader, '\n');
-      cellheader = NULL;
+      if (cellheader->List.type != AST_LIST) {
+        cellheader = NULL;
+      }
     } else if (/*parentcellheader != null &&*/parentcellheader->subcellcounter == 0) {
       reader_putc(reader, ')');
       reader_putc(reader, '\n');

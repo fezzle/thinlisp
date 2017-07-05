@@ -38,6 +38,8 @@ typedef char bool;
 #define AST_COMMA_AT (AST_AT + 6)
 #define AST_QUOTE_HASH (AST_AT + 7)
 #define AST_SINGLEQUOTE (AST_AT + 8)
+#define AST_MINUS (AST_AT + 9)
+#define AST_PLUS (AST_AT + 10)
 
 static const char AST_1PREFIX[] = { 'X', '@', '\"', '`', '\'', ',', '&', 0, 0 };
 #define AST_2PREFIX_OFFSET (sizeof(AST_1PREFIX) / sizeof(char))
