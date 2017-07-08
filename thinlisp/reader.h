@@ -25,7 +25,7 @@ typedef struct reader_integercontext {
 
 typedef struct reader_listcontext {
   CELLHEADER *cellheader;
-  READER_CONTEXT *cell;
+  READER_CONTEXT *reader_context;
 } READER_LIST_CONTEXT;
 
 typedef struct reader_context {
@@ -64,7 +64,7 @@ typedef struct reader {
 
   uint8_t in_comment;
 
-  READER_CONTEXT *cell;
+  READER_CONTEXT *reader_context;
 
 } READER;
 

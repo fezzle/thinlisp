@@ -22,7 +22,7 @@ READER *reader_new(ENVIRONMENT *e) {
   READER *r = bistack_alloc(e->bs, sizeof(READER));
   r->environment = e;
   r->in_comment = FALSE;
-
+  r->reader_context = NULL;
   r->ungetbuff_i = 0;
   r->putc_streamobj = NULL;
   r->putc = NULL;
@@ -223,6 +223,7 @@ bool reader_consume_comment(READER *reader) {
 
 
 READER_CONTEXT *new_reader_context(AST_TYPE asttype, BISTACK *bs) {
+  bistack_mark(bs);
   READER_CONTEXT *rc = bistack_alloc(bs, sizeof(READER_CONTEXT));
 
   rc->asttype = asttype;
@@ -234,7 +235,7 @@ READER_CONTEXT *new_reader_context(AST_TYPE asttype, BISTACK *bs) {
     rc->list->cellheader->List.type = asttype.type;
     rc->list->cellheader->List.prefix = asttype.prefix;
     rc->list->cellheader->List.length = 0;
-    rc->list->cell = NULL;
+    rc->list->reader_context = NULL;
     break;
   case AST_SYMBOL:
     rc->symbol = bistack_alloc(bs, sizeof(READER_SYMBOL_CONTEXT));
@@ -257,6 +258,10 @@ READER_CONTEXT *new_reader_context(AST_TYPE asttype, BISTACK *bs) {
   return rc;
 }
 
+void destroy_reader_context(BISTACK *bs, READER_CONTEXT *reader_context) {
+  bistack_rewind(bs);
+}
+
 
 bool reader_read(READER *reader) {
   BISTACK *bs = reader->environment->bs;
@@ -265,7 +270,13 @@ bool reader_read(READER *reader) {
   bistack_mark(bs);
   LIST *reader_context_stack = list_new(bs);
 
-  READER_CONTEXT *reader_context = reader->cell;
+  // reader_contexts are hierachical through their ->list to provide 
+  // continuation like behaviour
+  READER_CONTEXT *reader_context = reader->reader_context;
+  while (reader_context != NULL && reader_context->asttype.type == AST_LIST) {
+    list_unshift(reader_context_stack, bs, reader_context);
+    reader_context = reader_context->list->reader_context;
+  }
 
   while (1) {
     // parent_reader_context is the parent of the current reader_context, 
@@ -287,8 +298,13 @@ bool reader_read(READER *reader) {
         // list terminator
         if (parent_reader_context) {
           parent_reader_context->list->cellheader->List.length++;
-          reader_context = NULL;
-          list_shift(reader_context_stack);
+          if (parent_reader_context != reader->reader_context) {
+            // keep the root reader context invariant
+            parent_reader_context->list->reader_context = NULL;
+          }
+        
+          destroy_reader_context(bs, reader_context);
+          reader_context = list_shift(reader_context_stack);
           continue;
         } else {
           return 1;
@@ -297,12 +313,12 @@ bool reader_read(READER *reader) {
         // new cell
         reader_context = new_reader_context(asttype, bs);
         
-        if (reader->cell == NULL) {
+        if (reader->reader_context == NULL) {
           // reader just beginning set root reader context to this
-          reader->cell = reader_context;
+          reader->reader_context = reader_context;
         } else if (parent_reader_context != NULL) {
           // set parent_reader_context to be currently reading reader_context    
-          parent_reader_context->list->cell = reader_context;
+          parent_reader_context->list->reader_context = reader_context;
         } else {
           lerror(READER_STATE_ERROR, "shouldn't reach");
         }
@@ -315,7 +331,9 @@ bool reader_read(READER *reader) {
       }
       if (parent_reader_context) {
         parent_reader_context->list->cellheader->List.length++;
+        parent_reader_context->list->reader_context = NULL;
       }
+      destroy_reader_context(bs, reader_context);
       reader_context = NULL;
       continue;
     }
@@ -326,7 +344,9 @@ bool reader_read(READER *reader) {
       }
       if (parent_reader_context) {
         parent_reader_context->list->cellheader->List.length++;
+        parent_reader_context->list->reader_context = NULL;
       }
+      destroy_reader_context(bs, reader_context);
       reader_context = NULL;
       continue;
     }
@@ -353,10 +373,11 @@ void reader_pprint(READER *reader) {
     uint8_t subcellcounter;
   } FRAME;
 
+  READER_CONTEXT *reader_context = reader->reader_context;
   CELLHEADER *cellheader = (
-    reader->cell->asttype.type == AST_LIST ? reader->cell->list->cellheader :
-    reader->cell->asttype.type == AST_SYMBOL ? reader->cell->symbol->cellheader :
-    reader->cell->integer->cellheader);
+    reader_context->asttype.type == AST_LIST ? reader_context->list->cellheader :
+    reader_context->asttype.type == AST_SYMBOL ? reader_context->symbol->cellheader :
+    reader_context->integer->cellheader);
   while (cellheader) {
     FRAME *parentcellheader = list_first(cellstack);
     if (cellheader->Symbol.type == AST_SYMBOL) {
@@ -364,7 +385,7 @@ void reader_pprint(READER *reader) {
         reader_putc(reader, ((char*)(&cellheader[1]))[i]);
       }
       reader_putc(reader, ' ');
-      cellheader = (void*)cellheader + sizeof(cellheader) + cellheader->Symbol.length;
+      cellheader = ((void*)cellheader + sizeof(cellheader)) + cellheader->Symbol.length;
       if (parentcellheader) {
         parentcellheader->subcellcounter--;
       }
@@ -399,6 +420,7 @@ void reader_pprint(READER *reader) {
       if (parentcellheader) {
         parentcellheader->subcellcounter--;
       }
+      parentcellheader = list_first(cellstack);
       indent++;
     }
 
@@ -451,9 +473,9 @@ static char * test_reader_sample() {
    reader_set_getc(reader, mygetc, streamobj);
    bool res = reader_read(reader);
    mu_assert("reader should complete", res);
-   mu_assert("reader cell should not be null", reader->cell != NULL);
+   mu_assert("reader reader_context should not be null", reader->reader_context != NULL);
 
-   mu_assert("read type should be list", reader->cell->asttype.type == AST_LIST);
+   mu_assert("read type should be list", reader->reader_context->asttype.type == AST_LIST);
    return 0;
 }
 
@@ -469,7 +491,7 @@ static char * test_reader_sample_pprint() {
    reader_set_putc(reader, myputc, NULL);
    reader_read(reader);
    reader_pprint(reader);
-   mu_assert("read type should be list", reader->cell->asttype.type == AST_LIST);
+   mu_assert("read type should be list", reader->reader_context->asttype.type == AST_LIST);
    return 0;
 }
 
