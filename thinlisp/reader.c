@@ -31,7 +31,7 @@ READER *reader_new(ENVIRONMENT *e) {
 
   return r;
 }
- 
+
 AST_TYPE reader_next_cell(READER *reader) {
   if (next_non_ws(reader) == -1) {
     return AST_NOTYPE;
@@ -51,16 +51,16 @@ AST_TYPE reader_next_cell(READER *reader) {
         reader_ungetc(reader, chars_read_buffer[chars_read]);
       }
       return AST_NOTYPE;
-    } 
+    }
 
     switch (c) {
     case '"':
       return (AST_TYPE){.type=AST_SYMBOL, .prefix=AST_DOUBLEQUOTE};
-      
+
     case '\'':
       asttype.prefix = AST_SINGLEQUOTE;
       continue;
-      
+
     case '`':
       asttype.prefix = AST_QUASIQUOTE;
       continue;
@@ -71,7 +71,7 @@ AST_TYPE reader_next_cell(READER *reader) {
     case ',':
       asttype.prefix = AST_COMMA;
       continue;
-    
+
     case '@':
       if (asttype.prefix == AST_COMMA) {
         asttype.prefix = AST_COMMA_AT;
@@ -84,18 +84,18 @@ AST_TYPE reader_next_cell(READER *reader) {
       asttype.prefix = AST_AMPERSAND;
       continue;
 
-    case '+': 
+    case '+':
       asttype.prefix = AST_PLUS;
       continue;
-    
-    case '-': 
+
+    case '-':
       asttype.prefix = AST_MINUS;
       continue;
 
     case ';':
       lassert(
-        asttype.bitfield == AST_NOTYPE.bitfield, 
-        READER_SYNTAX_ERROR, 
+        asttype.bitfield == AST_NOTYPE.bitfield,
+        READER_SYNTAX_ERROR,
         "comment in expression");
       chars_read = 0;
       reader->in_comment = TRUE;
@@ -114,7 +114,7 @@ AST_TYPE reader_next_cell(READER *reader) {
         reader_ungetc(reader, chars_read_buffer[chars_read]);
       }
       return (AST_TYPE){.type=AST_SYMBOL, .prefix=AST_NONE, .terminator=FALSE};
-        
+
     default:
       if (((c & 0b110000) && (c >= '0' && c <= '9'))) {
         reader_ungetc(reader, c);
@@ -123,7 +123,7 @@ AST_TYPE reader_next_cell(READER *reader) {
       } else if ((c >= '<') && (c <= 'z')) {
         reader_ungetc(reader, c);
         return (AST_TYPE){.type=AST_SYMBOL, .prefix=asttype.prefix, .terminator=FALSE};
-      
+
       } else {
         lerror(READER_SYNTAX_ERROR, "unhandled: %c(%hhx)\n", c, c);
       }
@@ -173,16 +173,16 @@ bool reader_symbol_context(READER *reader, READER_CONTEXT *reader_context) {
     }
     if (c == -1) {
       return FALSE;
-    
+
     } else if (c == '\\' && !symbol_context->is_escaped) {
       symbol_context->is_escaped = 1;
-    
+
     } else if (symbol_context->is_escaped) {
       ((char*)(&header[1]))[header->Symbol.length++] = c;
-    
+
     } else if (c == '"' && is_double_quote) {
       break;
-  
+
     } else if (!is_double_quote &&
         (is_whitespace(c) || (c == ')') || (c == ';'))) {
       // put back character that ends non-double-quoted symbol
@@ -194,7 +194,7 @@ bool reader_symbol_context(READER *reader, READER_CONTEXT *reader_context) {
     }
   }
   header->Symbol.hash = hashstr_8((char*)(&header[1]), header->Symbol.length);
-  
+
   bistack_allocf(reader->environment->bs, header->Symbol.length);
   return TRUE;
 }
@@ -265,12 +265,12 @@ void destroy_reader_context(BISTACK *bs, READER_CONTEXT *reader_context) {
 
 bool reader_read(READER *reader) {
   BISTACK *bs = reader->environment->bs;
-  
+
   // mark the stack to rewind when return
   bistack_mark(bs);
   LIST *reader_context_stack = list_new(bs);
 
-  // reader_contexts are hierachical through their ->list to provide 
+  // reader_contexts are hierachical through their ->list to provide
   // continuation like behaviour
   READER_CONTEXT *reader_context = reader->reader_context;
   while (reader_context != NULL && reader_context->asttype.type == AST_LIST) {
@@ -279,12 +279,12 @@ bool reader_read(READER *reader) {
   }
 
   while (1) {
-    // parent_reader_context is the parent of the current reader_context, 
+    // parent_reader_context is the parent of the current reader_context,
     // should always be type list
     READER_CONTEXT *parent_reader_context = list_first(reader_context_stack);
     lassert(
-      parent_reader_context == NULL || 
-      parent_reader_context->asttype.type == AST_LIST, 
+      parent_reader_context == NULL ||
+      parent_reader_context->asttype.type == AST_LIST,
       READER_STATE_ERROR);
 
     if (reader_context == NULL) {
@@ -293,38 +293,38 @@ bool reader_read(READER *reader) {
       if (asttype.bitfield == AST_NOTYPE.bitfield) {
         // EOF?, return TRUE iff no parent context (implying we must be EOF in root context)
         return parent_reader_context == NULL;
-        
+
       } else if (asttype.terminator) {
         // list terminator
-        if (parent_reader_context) {
-          parent_reader_context->list->cellheader->List.length++;
-          if (parent_reader_context != reader->reader_context) {
-            // keep the root reader context invariant
-            parent_reader_context->list->reader_context = NULL;
-          }
-        
-          destroy_reader_context(bs, reader_context);
-          reader_context = list_shift(reader_context_stack);
-          continue;
-        } else {
+        destroy_reader_context(bs, NULL);
+        reader_context = list_shift(reader_context_stack);
+        if (reader_context == NULL) {
+          // probably finished?
           return 1;
+        }
+        parent_reader_context = list_first(reader_context_stack);
+        if (parent_reader_context != NULL) {
+          parent_reader_context->list->cellheader->List.length++;
+        }
+        if (parent_reader_context != reader->reader_context) {
+          parent_reader_context->list->reader_context = NULL;
         }
       } else {
         // new cell
         reader_context = new_reader_context(asttype, bs);
-        
+
         if (reader->reader_context == NULL) {
           // reader just beginning set root reader context to this
           reader->reader_context = reader_context;
         } else if (parent_reader_context != NULL) {
-          // set parent_reader_context to be currently reading reader_context    
+          // set parent_reader_context to be currently reading reader_context
           parent_reader_context->list->reader_context = reader_context;
         } else {
           lerror(READER_STATE_ERROR, "shouldn't reach");
         }
       }
     }
-    
+
     if (reader_context->asttype.type == AST_SYMBOL) {
       if (!reader_symbol_context(reader, reader_context)) {
         return 0;
@@ -337,7 +337,7 @@ bool reader_read(READER *reader) {
       reader_context = NULL;
       continue;
     }
-    
+
     if (reader_context->asttype.type == AST_INTEGER) {
       if (!reader_integer_context(reader, reader_context)) {
         return 0;
@@ -350,7 +350,7 @@ bool reader_read(READER *reader) {
       reader_context = NULL;
       continue;
     }
-    
+
     if (reader_context->asttype.type == AST_LIST) {
       list_unshift(reader_context_stack, bs, reader_context);
       reader_context = NULL;
@@ -402,15 +402,15 @@ void reader_pprint(READER *reader) {
       cellheader = (void*)cellheader + sizeof(cellheader);
       if (parentcellheader) {
         parentcellheader->subcellcounter--;
-      } 
-    } 
+      }
+    }
     else if (cellheader->List.type == AST_LIST) {
       for (uint8_t n=0; n<indent; n++) {
         reader_putc(reader, ' ');
       }
       reader_putstr(reader, AST_PREFIX_STR(cellheader->List.prefix));
       reader_putc(reader, '(');
-      
+
       FRAME *newframe = bistack_alloc(e->bs, sizeof(FRAME));
       newframe->subcellcounter = cellheader->List.length;
       newframe->cellheader = cellheader;
@@ -465,7 +465,7 @@ char myputc(void *streamobj, char c) {
 }
 
 static char * test_reader_sample() {
-   BISTACK *bs = bistack_new(8096);
+   BISTACK *bs = bistack_new(1<<14);
    bistack_pushdir(bs, BS_BACKWARD);
    ENVIRONMENT *environment = environment_new(bs);
    READER *reader = reader_new(environment);
@@ -482,7 +482,7 @@ static char * test_reader_sample() {
 
 
 static char * test_reader_sample_pprint() {
-   BISTACK *bs = bistack_new(8096);
+   BISTACK *bs = bistack_new(1<<14);
    bistack_pushdir(bs, BS_BACKWARD);
    ENVIRONMENT *environment = environment_new(bs);
    READER *reader = reader_new(environment);
@@ -511,7 +511,7 @@ int main(int argc, char **argv) {
          printf("ALL TESTS PASSED\n");
      }
      printf("Tests run: %d\n", tests_run);
- 
+
      return result != 0;
 }
 

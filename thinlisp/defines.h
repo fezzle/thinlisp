@@ -56,7 +56,7 @@ static const char AST_2PREFIX[][2] = { {'X', 'X'},
    (X) == AST_COMMA_AT ? PSTR(",@") :			\
    (X) == AST_QUOTE_HASH ? PSTR("'#") : PSTR(""))
 
-#define AST_POSTFIX_STR(X) ((X).prefix == AST_DOUBLEQUOTE ? PSTR("\"") : PSTR(""))	
+#define AST_POSTFIX_STR(X) ((X).prefix == AST_DOUBLEQUOTE ? PSTR("\"") : PSTR(""))
 
 #define BIT31 ((int32_t)1<<31)
 #define BIT30 ((int32_t)1<<30)
@@ -77,7 +77,7 @@ typedef struct ast_type {
      uint8_t bitfield;
   };
 } AST_TYPE;
-  
+
 #define AST_NOTYPE ((AST_TYPE) {\
   .type = AST_NONE, \
   .prefix = AST_NONE, \
@@ -100,7 +100,7 @@ typedef union {
 
   /* Integer type */
   struct {
-    uint16_t type : 2;  
+    uint16_t type : 2;
     uint16_t sign : 1;
     uint16_t value : 13;
   } Integer;

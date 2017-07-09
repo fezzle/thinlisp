@@ -12,6 +12,7 @@
         "cwd": "${workspaceRoot}",
         "environment": [],
         "externalConsole": true,
+        "preLaunchTask": "run_bistack_test",
         "MIMode": "lldb"
     },
     {
