@@ -299,15 +299,12 @@ bool reader_read(READER *reader) {
         destroy_reader_context(bs, NULL);
         reader_context = list_shift(reader_context_stack);
         if (reader_context == NULL) {
-          // probably finished?
+          // no parent context, this was the root.  reading completed.
           return 1;
         }
         parent_reader_context = list_first(reader_context_stack);
         if (parent_reader_context != NULL) {
           parent_reader_context->list->cellheader->List.length++;
-        }
-        if (parent_reader_context != reader->reader_context) {
-          parent_reader_context->list->reader_context = NULL;
         }
       } else {
         // new cell
