@@ -297,7 +297,9 @@ bool reader_read(READER *reader) {
       } else if (asttype.terminator) {
         // list terminator
         destroy_reader_context(bs, NULL);
-        if (list_shift(reader_context_stack) == NULL) {
+        reader_context = list_shift(reader_context_stack);
+        if (reader_context == NULL) {
+          // no parent context, this was the root.  reading completed.
           return 1;
         }
         reader_context = NULL;
@@ -306,11 +308,6 @@ bool reader_read(READER *reader) {
         if (parent_reader_context == NULL) {
           return 1;
         }
-        parent_reader_context->list->cellheader->List.length++;
-        if (parent_reader_context != reader->reader_context) {
-          parent_reader_context->list->reader_context = NULL;
-        }
-        continue;
       } else {
         // new cell
         reader_context = new_reader_context(asttype, bs);
