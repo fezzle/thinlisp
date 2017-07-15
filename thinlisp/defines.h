@@ -121,15 +121,23 @@ typedef union {
 typedef struct cell {
   CELLHEADER header;
   union {
-    char str[0];
+    char string[0];
     CELLHEADER cells[0];
   };
 } CELL;
-#endif
+
+
+inline CELL *get_cell(CELLHEADER *cellheader) {
+  return (CELL*)cellheader;
+}
+
 
 
 #define BREAKPOINT \
   { \
   char c = *(char*)0; \
   }
+
+
+#endif
 

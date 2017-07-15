@@ -297,18 +297,20 @@ bool reader_read(READER *reader) {
       } else if (asttype.terminator) {
         // list terminator
         destroy_reader_context(bs, NULL);
-        reader_context = list_shift(reader_context_stack);
-        if (reader_context == NULL) {
-          // probably finished?
+        if (list_shift(reader_context_stack) == NULL) {
           return 1;
         }
+        reader_context = NULL;
+
         parent_reader_context = list_first(reader_context_stack);
-        if (parent_reader_context != NULL) {
-          parent_reader_context->list->cellheader->List.length++;
+        if (parent_reader_context == NULL) {
+          return 1;
         }
+        parent_reader_context->list->cellheader->List.length++;
         if (parent_reader_context != reader->reader_context) {
           parent_reader_context->list->reader_context = NULL;
         }
+        continue;
       } else {
         // new cell
         reader_context = new_reader_context(asttype, bs);
@@ -357,6 +359,7 @@ bool reader_read(READER *reader) {
       continue;
     }
   }
+  lerror(READER_STATE_ERROR, "unexpectedly reached end of reader loop");
 }
 
 
