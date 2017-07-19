@@ -85,7 +85,7 @@ typedef struct ast_type {
   })
 
 #define AST_TERMINATOR ((AST_TYPE){\
-  .type = AST_NONE,\
+  .type = AST_LIST,\
   .prefix = AST_NONE,\
   .terminator = TRUE,\
   })

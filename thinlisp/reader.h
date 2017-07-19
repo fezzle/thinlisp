@@ -9,28 +9,27 @@
 #include "utils.h"
 #include "list.h"
 #include "bistack.h"
+#include "runtime.h"
 
 
 typedef struct reader READER;
 typedef struct reader_context READER_CONTEXT;
 
 typedef struct reader_symbolcontext {
-  CELLHEADER *cellheader;
   char is_escaped;
 } READER_SYMBOL_CONTEXT;
 
 typedef struct reader_integercontext {
-  CELLHEADER *cellheader;
 } READER_INTEGER_CONTEXT;
 
 typedef struct reader_listcontext {
-  CELLHEADER *cellheader;
   READER_CONTEXT *reader_context;
 } READER_LIST_CONTEXT;
 
 typedef struct reader_context {
   struct {
     AST_TYPE asttype;
+    CELLHEADER *cellheader;
     union {
       READER_SYMBOL_CONTEXT *symbol;
       READER_INTEGER_CONTEXT *integer;
@@ -40,12 +39,12 @@ typedef struct reader_context {
 } READER_CONTEXT;
 
 
-typedef struct environment { 
+typedef struct environment {
   // total strlen of the non-global symbols
   uint16_t total_symbols;
   uint16_t total_strlen;
   uint16_t total_astnodes;
-  
+
   BISTACK *bs;
 
 } ENVIRONMENT;
@@ -60,17 +59,30 @@ typedef struct reader {
   char (*putc)(void *putc_streamobj, char c);
 
   char ungetbuff[4];
-  uint8_t ungetbuff_i;
 
-  uint8_t in_comment;
+  uint8_t ungetbuff_i:4;
+  uint8_t in_comment:1;
+  uint8_t is_completed:1;
 
-  READER_CONTEXT *reader_context;
-
+  union {
+    READER_CONTEXT *reader_context;
+    CELL *cell;
+  };
 } READER;
 
 ENVIRONMENT *environment_new(BISTACK *bs);
 READER *reader_new(ENVIRONMENT *e);
 char reader_consume_comment(READER *reader);
+
+inline READER_CONTEXT *reader_get_readercontext(READER *reader) {
+  lassert(reader->is_completed == FALSE, READER_STATE_ERROR);
+  return reader->reader_context;
+}
+
+inline CELL *reader_get_cell(READER *reader) {
+  lassert(reader->is_completed == TRUE, READER_STATE_ERROR);
+  return reader->cell;
+}
 
 static inline char reader_getc(READER *r) {
   char c;
