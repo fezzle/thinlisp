@@ -1,19 +1,23 @@
 #ifndef BISTACK_H
 #define BISTACK_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include <assert.h>
-#include "heap.h"
+
+//bistack.c debug
+//#define BS_DEBUG(...) fprintf(stderr, __VA_ARGS__)
+#define BS_DEBUG(...)
 
 #define BS_FORWARD 0
 #define BS_BACKWARD 1
 
 typedef struct bistack {
   void *forwardptr;
-  MARK *forwardmark;
+  void **forwardmark;
 
-  MARK *backwardmark;
   void *backwardptr;
+  void **backwardmark;
 
   uint8_t direction_stack;
 } BISTACK;
@@ -29,17 +33,19 @@ void *bistack_allocf(BISTACK *bs, uint16_t size);
 
 void *bistack_allocb(BISTACK *bs, uint16_t size);
 
-void bistack_mark(BISTACK *bs);
+void *bistack_mark(BISTACK *bs);
 
-void bistack_rewind(BISTACK *bs);
+void *bistack_rewind(BISTACK *bs);
 
-void bistack_markf(BISTACK *bs);
+void *bistack_markf(BISTACK *bs);
 
-void bistack_rewindf(BISTACK *bs);
+void *bistack_rewindf(BISTACK *bs);
 
-void bistack_markb(BISTACK *bs);
+void *bistack_markb(BISTACK *bs);
 
-void bistack_rewindb(BISTACK *bs);
+void *bistack_rewindb(BISTACK *bs);
+
+void bistack_zero(BISTACK *bs);
 
 void bistack_dropmark(BISTACK *bs);
 void bistack_dropmarkf(BISTACK *bs);

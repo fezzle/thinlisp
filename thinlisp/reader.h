@@ -11,7 +11,6 @@
 #include "bistack.h"
 #include "runtime.h"
 
-
 typedef struct reader READER;
 typedef struct reader_context READER_CONTEXT;
 
@@ -30,6 +29,7 @@ typedef struct reader_context {
   struct {
     AST_TYPE asttype;
     CELLHEADER *cellheader;
+    void *rewindmark;
     union {
       READER_SYMBOL_CONTEXT *symbol;
       READER_INTEGER_CONTEXT *integer;
@@ -64,25 +64,13 @@ typedef struct reader {
   uint8_t in_comment:1;
   uint8_t is_completed:1;
 
-  union {
-    READER_CONTEXT *reader_context;
-    CELL *cell;
-  };
+  READER_CONTEXT *reader_context;
+  CELL *cell;
 } READER;
 
 ENVIRONMENT *environment_new(BISTACK *bs);
 READER *reader_new(ENVIRONMENT *e);
 char reader_consume_comment(READER *reader);
-
-inline READER_CONTEXT *reader_get_readercontext(READER *reader) {
-  lassert(reader->is_completed == FALSE, READER_STATE_ERROR);
-  return reader->reader_context;
-}
-
-inline CELL *reader_get_cell(READER *reader) {
-  lassert(reader->is_completed == TRUE, READER_STATE_ERROR);
-  return reader->cell;
-}
 
 static inline char reader_getc(READER *r) {
   char c;
@@ -95,7 +83,7 @@ static inline char reader_getc(READER *r) {
 }
 
 static inline char reader_ungetc(READER *r, char c) {
-  assert(r->ungetbuff_i < sizeof(r->ungetbuff));
+  lassert(r->ungetbuff_i < sizeof(r->ungetbuff), READER_STATE_ERROR);
   r->ungetbuff[r->ungetbuff_i++] = c;
   return c;
 }

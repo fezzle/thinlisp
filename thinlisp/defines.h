@@ -4,12 +4,6 @@
 #include <string.h>
 #include <stdint.h>
 
-#ifndef PSTR
-#define PSTR(X) ((char*)(X))
-#define strncmp_P strncmp
-#define strncpy_P strncpy
-#endif
-
 #ifndef TRUE
 #define TRUE 1
 #endif
@@ -63,10 +57,6 @@ static const char AST_2PREFIX[][2] = { {'X', 'X'},
 #define BIT15 ((int16_t)1<<15)
 #define BIT14 ((int16_t)1<<14)
 
-//bistack.c debug
-//#define BS_DEBUG(...) fprintf(stderr, __VA_ARGS__)
-#define BS_DEBUG(...)
-
 typedef struct ast_type {
   union {
     struct {
@@ -77,18 +67,6 @@ typedef struct ast_type {
      uint8_t bitfield;
   };
 } AST_TYPE;
-
-#define AST_NOTYPE ((AST_TYPE) {\
-  .type = AST_NONE, \
-  .prefix = AST_NONE, \
-  .terminator = AST_NONE, \
-  })
-
-#define AST_TERMINATOR ((AST_TYPE){\
-  .type = AST_LIST,\
-  .prefix = AST_NONE,\
-  .terminator = TRUE,\
-  })
 
 typedef union {
   /* Symbol Type */

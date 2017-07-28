@@ -13,7 +13,7 @@ SOURCES = $(SOURCES_BASE)
 
 #####################
 
-SRCS = 
+SRCS =
 OBJS = $(SRCS:%.c=%.o)
 BINS = $(OBJS:%.o=%)
 OTHER_OBJS = reader.o
@@ -29,10 +29,10 @@ RL_LIBRARY ?= readline
 CFLAGS += -DUSE_READLINE=1
 endif
 
-#CFLAGS += $(GLIB_CFLAGS) -I /usr/local/Cellar/readline/6.2.4/include/ 
-CFLAGS += $(GLIB_CFLAGS) 
+#CFLAGS += $(GLIB_CFLAGS) -I /usr/local/Cellar/readline/6.2.4/include/
+CFLAGS += $(GLIB_CFLAGS)
 #LDFLAGS += -l$(RL_LIBRARY) $(GLIB_LDFLAGS) -ldl -lffi -L/usr/local/Cellar/readline/6.2.4/lib/
-LDFLAGS += -l$(RL_LIBRARY) $(GLIB_LDFLAGS) -ldl -lffi 
+LDFLAGS += -l$(RL_LIBRARY) $(GLIB_LDFLAGS) -ldl -lffi
 
 #####################
 
@@ -59,8 +59,8 @@ all: test femto
 heap_test: heap.c heap.h
 	$(CC) $(CFLAGS) -g $< -DHEAP_TEST -o $@ && ./$@ && rm $@
 
-bistack_test: bistack.c bistack.h runtime.c runtime.h heap.c heap.h
-	$(CC) $(CFLAGS) -g $(filter %.c,$^) -DBISTACK_TEST -o test/$@ 
+bistack_test: bistack.c bistack.h runtime.c runtime.h
+	$(CC) $(CFLAGS) -g $(filter %.c,$^) -DBISTACK_TEST -o test/$@
 
 run_bistack_test: bistack_test
 	./test/bistack_test
@@ -72,16 +72,16 @@ utils_test: utils.c
 	$(CC) $(CFLAGS) -g $< -DUTILS_TEST -o test/$@ && ./test/$@
 
 reader_test: $(patsubst %,%.c,$(READER_PARTS)) $(patsubst %,%.h,$(READER_PARTS))
-	$(CC) $(CFLAGS) -g $(filter %.c,$^) -DREADER_TEST -o test/$@ 
+	$(CC) $(CFLAGS) -g $(filter %.c,$^) -DREADER_TEST -o test/$@
 
-run_reader_test: 
+run_reader_test:
 	./test/reader_test
 
 nvmem_test: $(patsubst %,%.c,$(NVMEM_PARTS)) $(patsubst %,%.h,$(NVMEM_PARTS))
 	$(CC) $(CFLAGS) -g $(filter %.c,$^) -DNVMEM_TEST -o $@ && ./$@ && rm $@
 
 avl_test: $(patsubst %,%.c,$(AVL_SOURCES)) $(patsubst %,%.h,$(AVL_SOURCES))
-	$(CC) $(CLFAGS) -g $(patsubst %,%.c,$(AVL_SOURCES)) -DAVL_TEST -o test/$@ 
+	$(CC) $(CLFAGS) -g $(patsubst %,%.c,$(AVL_SOURCES)) -DAVL_TEST -o test/$@
 
 run_avl_test: avl_test
 	./test/avl_test

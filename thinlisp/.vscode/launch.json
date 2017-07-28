@@ -12,7 +12,7 @@
         "cwd": "${workspaceRoot}",
         "environment": [],
         "externalConsole": true,
-        "preLaunchTask": "run_bistack_test",
+        "preLaunchTask": "make bistack_test",
         "MIMode": "lldb"
     },
     {
@@ -26,7 +26,7 @@
         "environment": [],
         "externalConsole": true,
         "MIMode": "lldb",
-        "preLaunchTask": "run_reader_test",
+        "preLaunchTask": "make reader_test",
         "osx": {
          "MIMode": "lldb"
         }

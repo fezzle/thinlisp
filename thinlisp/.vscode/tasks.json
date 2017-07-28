@@ -9,8 +9,13 @@
     "echoCommand": true,
     "tasks": [
         {
-            "taskName": "run_reader_test",
+            "taskName": "make reader_test",
             "args": ["reader_test"],
+            "command": "make"
+        },
+        {
+            "taskName": "make bistack_test",
+            "args": ["bistack_test"],
             "command": "make"
         }
     ]
