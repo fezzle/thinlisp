@@ -71,6 +71,8 @@ typedef struct reader {
 ENVIRONMENT *environment_new(BISTACK *bs);
 READER *reader_new(ENVIRONMENT *e);
 char reader_consume_comment(READER *reader);
+char reader_read(READER *reader);
+char reader_pprint(READER *reader);
 
 static inline char reader_getc(READER *r) {
   char c;

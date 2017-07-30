@@ -169,6 +169,7 @@ bool reader_integer_context(READER *reader, READER_CONTEXT *reader_context) {
     } else if (c >= '0' && c <= '9') {
       value = value * 10 + (c - '0');
       header->Integer.value = value;
+
     } else {
       reader_ungetc(reader, c);
       return TRUE;
@@ -250,8 +251,8 @@ bool reader_consume_comment(READER *reader) {
 
 READER_CONTEXT *new_reader_context(AST_TYPE asttype, BISTACK *bs) {
   /**
-   * Pushes a READER_CONTEXT on the default(BACKWARD) stack of BS.
-   * Pushes a new CELLHEADER on the FORWARD stack of BS.
+   * Marks and allocates a READER_CONTEXT on the default(BACKWARD) stack of BS.
+   * Allocates a new CELLHEADER on the FORWARD stack of BS.
    */
   void *rewindmark = bistack_mark(bs);
   READER_CONTEXT *rc = bistack_alloc(bs, sizeof(READER_CONTEXT));
@@ -262,7 +263,6 @@ READER_CONTEXT *new_reader_context(AST_TYPE asttype, BISTACK *bs) {
   switch (asttype.type) {
   case AST_LIST:
     rc->list = bistack_alloc(bs, sizeof(READER_LIST_CONTEXT));
-
     rc->list->reader_context = NULL;
     rc->cellheader = bistack_allocf(bs, sizeof(CELLHEADER));
     rc->cellheader->List.type = asttype.type;
@@ -290,14 +290,16 @@ READER_CONTEXT *new_reader_context(AST_TYPE asttype, BISTACK *bs) {
   return rc;
 }
 
+/**
+ * Destroys a reader context and asserts the rewind mark matches its mark
+ */
 void destroy_reader_context(BISTACK *bs, READER_CONTEXT *reader_context) {
-  lassert(
-    bistack_rewind(bs) == reader_context->rewindmark,
-    READER_STATE_ERROR);
+  void *rewind_mark = bistack_rewind(bs);
+  lassert(rewind_mark == reader_context->rewindmark, READER_STATE_ERROR);
 }
 
 
-bool reader_read(READER *reader) {
+char reader_read(READER *reader) {
   BISTACK *bs = reader->environment->bs;
 
   while (1) {
@@ -400,8 +402,70 @@ bool reader_read(READER *reader) {
   lerror(READER_STATE_ERROR, "unexpectedly reached end of reader loop");
 }
 
+void reader_visit(
+    READER *reader,
+    void *ctx,
+    bool (*visit_fn)(READER *reader, CELL *cell, void *ctx)) {
 
-void reader_pprint(READER *reader) {
+  typedef struct frame {
+    CELLHEADER *cellheader;
+    uint8_t subcellcounter;
+  } FRAME;
+
+  ENVIRONMENT *e = reader->environment;
+  LIST *framestack = list_new(e->bs);
+  lassert(reader->putc != NULL, READER_STATE_ERROR);
+
+  CELLHEADER *cellheader = (CELLHEADER*)reader->cell;
+
+  while (cellheader) {
+    FRAME *parentframe = list_first(framestack);
+
+    if (parentframe != NULL && parentframe->subcellcounter == 0) {
+      // parent list is now empty, terminate list and pop cellstack
+      visit_fn(reader, (CELL*)parentframe->cellheader, ctx);
+      list_shift(framestack);
+      parentframe = list_first(framestack);
+      if (parentframe) {
+        parentframe->subcellcounter--;
+      } else {
+        cellheader = NULL;
+      }
+      continue;
+    }
+    lassert(
+      !parentframe || parentframe->subcellcounter > 0,
+      READER_STATE_ERROR);
+
+    if (cellheader->Symbol.type == AST_SYMBOL) {
+      visit_fn(reader, (CELL*)cellheader, ctx);
+
+      cellheader = (CELLHEADER*)(
+        &((CELL*)cellheader)->string[cellheader->Symbol.length]);
+      if (parentframe) {
+        parentframe->subcellcounter--;
+      }
+
+    } else if (cellheader->Integer.type == AST_INTEGER) {
+      visit_fn(reader, (CELL*)cellheader, ctx);
+
+      cellheader = &cellheader[1];
+      if (parentframe) {
+        parentframe->subcellcounter--;
+      }
+
+    } else if (cellheader->List.type == AST_LIST) {
+      FRAME *newframe = bistack_alloc(e->bs, sizeof(FRAME));
+      newframe->subcellcounter = cellheader->List.length;
+      newframe->cellheader = cellheader;
+      list_unshift(framestack, e->bs, newframe);
+      cellheader = ((CELL*)cellheader)->cells;
+      parentframe = list_first(framestack);
+    }
+  }
+}
+
+char reader_pprint(READER *reader) {
   ENVIRONMENT *e = reader->environment;
   lassert(reader->putc != NULL, READER_STATE_ERROR);
 
@@ -500,175 +564,5 @@ void reader_pprint(READER *reader) {
       indent++;
     }
   }
-}
-
-
-#ifdef READER_TEST
-#include <stdio.h>
-#include <string.h>
-#include "tests/minunit.h"
-
-int tests_run = 0;
-
-/**
- * A structure which contains a FILE and flags to alter the behaviour of
- * mygetc
- */
-struct file_with_eof_flag {
-  FILE *file;
-  char characters_to_read;
-};
-
-uint8_t result_of_sample_lisp[] = {
-  0x03, 0x01, 0x15, 0x92, 0x64, 0x65, 0x66, 0x75, 0x6e, 0x11, 0x14, 0x6d,
-  0x6f, 0x76, 0x65, 0x03, 0x01, 0x05, 0x05, 0x6e, 0x11, 0xf5, 0x66, 0x72,
-  0x6f, 0x6d, 0x09, 0x6c, 0x74, 0x6f, 0x0d, 0x3f, 0x76, 0x69, 0x61, 0xc3,
-  0x00, 0x11, 0xb1, 0x63, 0x6f, 0x6e, 0x64, 0x83, 0x00, 0xc3, 0x00, 0x05,
-  0xc5, 0x3d, 0x05, 0x05, 0x6e, 0x0e, 0x00, 0x43, 0x01, 0x19, 0xd7, 0x66,
-  0x6f, 0x72, 0x6d, 0x61, 0x74, 0x05, 0x9e, 0x74, 0x5d, 0x56, 0x22, 0x4d,
-  0x6f, 0x76, 0x65, 0x20, 0x66, 0x72, 0x6f, 0x6d, 0x20, 0x7e, 0x41, 0x20,
-  0x74, 0x6f, 0x20, 0x7e, 0x41, 0x2e, 0x7e, 0x25, 0x22, 0x11, 0xf5, 0x66,
-  0x72, 0x6f, 0x6d, 0x09, 0x6c, 0x74, 0x6f, 0x03, 0x01, 0x05, 0x9e, 0x74,
-  0x43, 0x01, 0x11, 0x14, 0x6d, 0x6f, 0x76, 0x65, 0xc3, 0x00, 0x05, 0xac,
-  0x2d, 0x05, 0x05, 0x6e, 0x0e, 0x00, 0x11, 0xf5, 0x66, 0x72, 0x6f, 0x6d,
-  0x0d, 0x3f, 0x76, 0x69, 0x61, 0x09, 0x6c, 0x74, 0x6f, 0x43, 0x01, 0x19,
-  0xd7, 0x66, 0x6f, 0x72, 0x6d, 0x61, 0x74, 0x05, 0x9e, 0x74, 0x5d, 0x56,
-  0x22, 0x4d, 0x6f, 0x76, 0x65, 0x20, 0x66, 0x72, 0x6f, 0x6d, 0x20, 0x7e,
-  0x41, 0x20, 0x74, 0x6f, 0x20, 0x7e, 0x41, 0x2e, 0x7e, 0x25, 0x22, 0x11,
-  0xf5, 0x66, 0x72, 0x6f, 0x6d, 0x09, 0x6c, 0x74, 0x6f, 0x43, 0x01, 0x11,
-  0x14, 0x6d, 0x6f, 0x76, 0x65, 0xc3, 0x00, 0x05, 0xac, 0x2d, 0x05, 0x05,
-  0x6e, 0x0e, 0x00, 0x0d, 0x3f, 0x76, 0x69, 0x61, 0x09, 0x6c, 0x74, 0x6f,
-  0x11, 0xf5, 0x66, 0x72, 0x6f, 0x6d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00,
-};
-
-
-char mygetc(void *streamobj_void) {
-  struct file_with_eof_flag *streamobj = (
-    struct file_with_eof_flag*)streamobj_void;
-  if (streamobj->characters_to_read == 0) {
-    return -1;
-  }
-  if (streamobj->characters_to_read > 0) {
-    streamobj->characters_to_read--;
-  }
-  int c = fgetc(streamobj->file);
-  if (c == EOF) {
-    return -1;
-  } else {
-    return (char)c;
-  }
-}
-
-char myputc(void *streamobj, char c) {
-  static char lastchar = 0;
-  if (lastchar == '\n') {
-    printf("***   ");
-  }
-  printf("%c", c);
-  fflush(stdout);
-  lastchar = c;
-  return c;
-}
-
-static char * test_reader_sample() {
-  struct file_with_eof_flag streamobj;
-  streamobj.file = fopen("tests/sample.lisp", "rb");
-  streamobj.characters_to_read = -1;
-
-  BISTACK *bs = bistack_new(1<<14);
-  bistack_pushdir(bs, BS_BACKWARD);
-  ENVIRONMENT *environment = environment_new(bs);
-  READER *reader = reader_new(environment);
-  reader_set_getc(reader, mygetc, &streamobj);
-  bool res = reader_read(reader);
-  mu_assert("reader should complete", res);
-  mu_assert("reader->is_completed should be true",
-    reader->is_completed);
-  mu_assert("root cell type should be list",
-    reader->cell->header.List.type == AST_LIST);
   return 0;
 }
-
-static char * test_reader_sample_pprint() {
-  struct file_with_eof_flag streamobj;
-  streamobj.file = fopen("tests/sample.lisp", "rb");
-  streamobj.characters_to_read = -1;
-
-  BISTACK *bs = bistack_new(1<<14);
-  bistack_pushdir(bs, BS_BACKWARD);
-  ENVIRONMENT *environment = environment_new(bs);
-  READER *reader = reader_new(environment);
-  reader_set_getc(reader, mygetc, &streamobj);
-  reader_set_putc(reader, myputc, NULL);
-  bool res = reader_read(reader);
-  mu_assert("reader should complete", res);
-  reader_pprint(reader);
-  mu_assert("root cell type should be list",
-    reader->cell->header.List.type == AST_LIST);
-  return 0;
-}
-
-
-static char * test_reader_start_stop() {
-  int i;
-  struct file_with_eof_flag streamobj;
-  streamobj.file = fopen("tests/sample.lisp", "rb");
-  streamobj.characters_to_read = 0;
-
-  BISTACK *bs = bistack_new(1<<14);
-  bistack_pushdir(bs, BS_BACKWARD);
-  ENVIRONMENT *environment = environment_new(bs);
-  READER *reader = reader_new(environment);
-  reader_set_getc(reader, mygetc, &streamobj);
-  reader_set_putc(reader, myputc, NULL);
-
-  // zero bs
-  bistack_zero(bs);
-  while(!reader->is_completed) {
-    char res = reader_read(reader);
-    // reset streamobj to read next char
-    streamobj.characters_to_read += 1;
-
-    // find first two-zeros
-    if (reader->reader_context == NULL) {
-      continue;
-    }
-  }
-  void *zeros = memmem(reader->cell, 1<<14, "\0\0", 2);
-  int bytes_to_compare = zeros - (void*)reader->cell;
-  printf("comparing %d bytes\n", bytes_to_compare);
-  for (i=0; i<bytes_to_compare; i++) {
-    if (((uint8_t*)reader->cell)[i] != result_of_sample_lisp[i]) {
-      printf("byte:%03d expected[0x%02x] got[0x%02x]\n",
-        i, ((uint8_t*)reader->cell)[i], result_of_sample_lisp[i]);
-      mu_assert("bytes didn't match", FALSE);
-    }
-  }
-
-  return 0;
-}
-
-static char *all_tests() {
-  mu_run_test(test_reader_sample);
-  mu_run_test(test_reader_sample_pprint);
-  mu_run_test(test_reader_start_stop);
-  return 0;
-}
-
-int main(int argc, char **argv) {
-  char *result = all_tests();
-  if (result != 0) {
-      printf("%s\n", result);
-  }
-  else {
-      printf("ALL TESTS PASSED\n");
-  }
-  printf("Tests run: %d\n", tests_run);
-
-  return result != 0;
-}
-
-#endif
