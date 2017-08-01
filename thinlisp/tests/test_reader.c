@@ -13,6 +13,35 @@ char result_of_sample2_lisp[];
 
 typedef char *(*TEST_FN)(char *, char *);
 
+char* memory_check(char *got, char *expected) {
+    // Compares arrays a and b until two zeros are found or 64k, 
+    // returns TRUE if same
+    static char message[1024];
+    int i;
+    void *got_zeros = memmem(got, 1<<16, "\0\0", 2);
+    int got_bytes = got_zeros - (void*)got;
+    void *expected_zeros = memmem(expected, 1<<16, "\0\0", 2);
+    int expected_bytes = expected_zeros - (void*)expected;
+    // use the higher number of bytes - the compare will fail when the smaller
+    //  one's zeros are found
+    int bytes_to_compare = (
+      got_bytes < expected_bytes ? expected_bytes : got_bytes);
+    for (i=0; i<bytes_to_compare; i++) {
+        if (got[i] != expected[i]) {
+            snprintf(
+                message, 
+                sizeof(message)-1, 
+                "byte:%03d expected[0x%02x] got[0x%02x]\n",
+                i, 
+                expected[i], 
+                got[i]);
+            message[sizeof(message)-1] = '\0';
+            return message;
+        }
+    }
+    return NULL;
+}
+    
 /**
  * A structure which contains a FILE and flags to alter the behaviour of
  * mygetc
@@ -59,17 +88,20 @@ static char * test_reader_result(
   streamobj.file = fopen(test_lisp_file, "rb");
   streamobj.characters_to_read = -1;
 
-  BISTACK *bs = bistack_new(1<<14);
+  BISTACK *bs = bistack_new(1<<18);
   bistack_pushdir(bs, BS_BACKWARD);
   ENVIRONMENT *environment = environment_new(bs);
   READER *reader = reader_new(environment);
   reader_set_getc(reader, mygetc, &streamobj);
-  bool res = reader_read(reader);
-  mu_assert("reader should complete", res);
-  mu_assert("reader->is_completed should be true",
-    reader->is_completed);
+  while (!feof(streamobj.file)) {
+    bool res = reader_read(reader);
+    mu_assert("reader should complete", res);
+  }
   mu_assert("root cell type should be list",
-    reader->cell->header.List.type == AST_LIST);
+    reader->reader_context->cellheader->List.type == AST_LIST);
+  char *memory_check_res = memory_check(
+        (char*)reader->reader_context->cellheader, expected_output);
+  mu_assert(memory_check_res, memory_check_res == NULL);
   return 0;
 }
 
@@ -82,17 +114,20 @@ static char * test_reader_pprint(
   streamobj.file = fopen(test_lisp_file, "rb");
   streamobj.characters_to_read = -1;
 
-  BISTACK *bs = bistack_new(1<<14);
+  BISTACK *bs = bistack_new(1<<18);
   bistack_pushdir(bs, BS_BACKWARD);
   ENVIRONMENT *environment = environment_new(bs);
   READER *reader = reader_new(environment);
   reader_set_getc(reader, mygetc, &streamobj);
   reader_set_putc(reader, myputc, NULL);
-  bool res = reader_read(reader);
-  mu_assert("reader should complete", res);
+  while (!feof(streamobj.file)) {
+    bool res = reader_read(reader);
+    mu_assert("reader should complete", res);
+  }
   reader_pprint(reader);
-  mu_assert("root cell type should be list",
-    reader->cell->header.List.type == AST_LIST);
+  mu_assert(
+    "root cell type should be list",
+    reader->reader_context->cellheader->List.type == AST_LIST);
   return 0;
 }
 
@@ -108,7 +143,7 @@ static char * test_reader_start_stop(
     streamobj.file = fopen(test_lisp_file, "rb");
     streamobj.characters_to_read = 0;
 
-    BISTACK *bs = bistack_new(1<<14);
+    BISTACK *bs = bistack_new(1<<18);
     bistack_pushdir(bs, BS_BACKWARD);
     ENVIRONMENT *environment = environment_new(bs);
     READER *reader = reader_new(environment);
@@ -117,53 +152,75 @@ static char * test_reader_start_stop(
 
     // zero bs
     bistack_zero(bs);
-    while(!reader->is_completed) {
+    while(!feof(streamobj.file)) {
         char res = reader_read(reader);
         // reset streamobj to read next char
         streamobj.characters_to_read += 1;
-
-        // find first two-zeros
-        if (reader->reader_context == NULL) {
-            continue;
-        }
     }
-    void *zeros = memmem(reader->cell, 1<<14, "\0\0", 2);
-    int bytes_to_compare = zeros - (void*)reader->cell;
-    printf("comparing %d bytes\n", bytes_to_compare);
-    for (i=0; i<bytes_to_compare; i++) {
-        if (((char*)reader->cell)[i] != expected_output[i]) {
-        printf("byte:%03d expected[0x%02x] got[0x%02x]\n",
-            i, ((char*)reader->cell)[i], expected_output[i]);
-        mu_assert("bytes didn't match", FALSE);
-        }
-    }
-
+    char *memory_check_res = memory_check(
+        (char*)reader->reader_context->cellheader, expected_output);
+    mu_assert(memory_check_res, memory_check_res == NULL);
     return 0;
 }
 
 static char *all_tests() {
-    char *testdata[][2] = {
-        {"tests/samples/sample1.lisp", result_of_sample1_lisp},
-        {"tests/samples/sample2.lisp", result_of_sample2_lisp},
+    static char fullmessage[1024];
+    struct TESTDATA {
+        char *test_lisp_file;
+        char *expected_result;
+    } testdata[] = {
+        {
+            .test_lisp_file="tests/samples/sample1.lisp", 
+            .expected_result=result_of_sample1_lisp
+        },
+        {
+            .test_lisp_file="tests/samples/sample2.lisp", 
+            .expected_result=result_of_sample2_lisp
+        },
     };
-    TEST_FN test_fns[] = {
-        test_reader_result,
-        test_reader_pprint,
-        test_reader_start_stop,
+
+    struct TESTFUNCTIONS {
+        TEST_FN testfn;
+        char *fnname;
+    } testfns[] = {
+        {
+            .testfn=test_reader_result, 
+            .fnname="test_reader_result"
+        },
+        {
+            .testfn=test_reader_pprint, 
+            .fnname="test_reader_pprint"
+        },
+        {
+            .testfn=test_reader_start_stop, 
+            .fnname="test_reader_start_stop"
+        },
     };
 
     char *message = NULL;
     for (int testdata_i = 0;
-            testdata_i < sizeof(testdata)/sizeof(char*);
+            testdata_i < sizeof(testdata)/sizeof(struct TESTDATA);
             testdata_i++) {
         for (int testfn_i = 0;
-                testfn_i < sizeof(test_fns)/(sizeof(TEST_FN));
+                testfn_i < sizeof(testfns)/sizeof(struct TESTFUNCTIONS);
                 testfn_i++) {
-            message = test_fns[testfn_i](
-                testdata[testdata_i][0], testdata[testdata_i][1]);
+            printf("Running %s: ", testfns[testfn_i].fnname);
+            message = testfns[testfn_i].testfn(
+                testdata[testdata_i].test_lisp_file, 
+                testdata[testdata_i].expected_result);
             tests_run++;
             if (message) {
-                return message;
+                printf("FAILED\n");
+                snprintf(fullmessage, 
+                  sizeof(fullmessage)-1,
+                  "%s-%s: %s", 
+                  testdata[testdata_i].test_lisp_file,
+                  testfns[testfn_i].fnname,
+                  message);
+                fullmessage[sizeof(fullmessage)-1] = '\0';
+                return fullmessage;
+            } else {
+                printf("PASSED\n");
             }
         }
     }
@@ -186,6 +243,7 @@ int main(int argc, char **argv) {
 
 /* results of reading smaple.lisp with some extra zeros at the end */
 char result_of_sample1_lisp[] = {
+  0x43, 0x00, // reader->reader_context headers are now always list
   0x03, 0x01, 0x15, 0x92, 0x64, 0x65, 0x66, 0x75, 0x6e, 0x11, 0x14, 0x6d,
   0x6f, 0x76, 0x65, 0x03, 0x01, 0x05, 0x05, 0x6e, 0x11, 0xf5, 0x66, 0x72,
   0x6f, 0x6d, 0x09, 0x6c, 0x74, 0x6f, 0x0d, 0x3f, 0x76, 0x69, 0x61, 0xc3,
@@ -210,4 +268,4 @@ char result_of_sample1_lisp[] = {
   0x00, 0x00, 0x00, 0x00,
 };
 
-char result_of_sample2_lisp[1000];
+char result_of_sample2_lisp[1000] = {'\0', '\0'};

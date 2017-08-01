@@ -62,10 +62,8 @@ typedef struct reader {
 
   uint8_t ungetbuff_i:4;
   uint8_t in_comment:1;
-  uint8_t is_completed:1;
 
   READER_CONTEXT *reader_context;
-  CELL *cell;
 } READER;
 
 ENVIRONMENT *environment_new(BISTACK *bs);
@@ -73,6 +71,7 @@ READER *reader_new(ENVIRONMENT *e);
 char reader_consume_comment(READER *reader);
 char reader_read(READER *reader);
 char reader_pprint(READER *reader);
+READER_CONTEXT *new_reader_context(AST_TYPE asttype, BISTACK *bs);
 
 static inline char reader_getc(READER *r) {
   char c;

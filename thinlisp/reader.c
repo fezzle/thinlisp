@@ -22,8 +22,13 @@ READER *reader_new(ENVIRONMENT *e) {
   READER *r = bistack_alloc(e->bs, sizeof(READER));
   r->environment = e;
   r->in_comment = FALSE;
-  r->is_completed = FALSE;
-  r->reader_context = NULL;
+  r->reader_context = new_reader_context(
+    (AST_TYPE){ 
+      .type = AST_LIST,
+      .prefix = AST_NONE, 
+      .terminator = AST_NONE,
+    },
+    e->bs);
   r->ungetbuff_i = 0;
   r->putc_streamobj = NULL;
   r->putc = NULL;
@@ -73,7 +78,11 @@ AST_TYPE reader_next_cell(READER *reader) {
       return (AST_TYPE){.type=AST_SYMBOL, .prefix=AST_DOUBLEQUOTE};
 
     case '\'':
-      asttype.prefix = AST_SINGLEQUOTE;
+      if (asttype.prefix == AST_HASH) {
+        asttype.prefix = AST_HASH_QUOTE;
+      } else {
+        asttype.prefix = AST_SINGLEQUOTE;
+      }
       continue;
 
     case '`':
@@ -107,6 +116,10 @@ AST_TYPE reader_next_cell(READER *reader) {
       asttype.prefix = AST_MINUS;
       continue;
 
+    case '#':
+      asttype.prefix = AST_HASH;
+      continue;
+
     case ';':
       lassert(
         asttype.bitfield == AST_NOTYPE.bitfield,
@@ -114,7 +127,7 @@ AST_TYPE reader_next_cell(READER *reader) {
         "comment in expression");
       chars_read = 0;
       reader->in_comment = TRUE;
-      if (reader_consume_comment(reader)) {
+      if (reader_consume_comment(reader) && next_non_ws(reader) != -1) {
         continue;
       } else {
         return AST_NOTYPE;
@@ -124,12 +137,14 @@ AST_TYPE reader_next_cell(READER *reader) {
       return AST_TERMINATOR;
 
     case ' ':
-      // space encountered while reading start of new cell.  maybe a symbol?
+    case '\n':
+      // space/newline encountered while reading start of new cell.  
+      // this can occur after reading a 1 character prefix that should be
+      //  treated like a symbol (ex: '-' or '+')
       while (chars_read-- > 0) {
         reader_ungetc(reader, chars_read_buffer[chars_read]);
       }
       return (AST_TYPE){.type=AST_SYMBOL, .prefix=AST_NONE, .terminator=FALSE};
-
     default:
       if (((c & 0b110000) && (c >= '0' && c <= '9'))) {
         reader_ungetc(reader, c);
@@ -138,7 +153,8 @@ AST_TYPE reader_next_cell(READER *reader) {
           .prefix=asttype.prefix,
           .terminator=FALSE};
 
-      } else if ((c >= '<') && (c <= 'z')) {
+      } else if ((c >= '"') && (c <= '~')) {
+        // all non-control characters are treated like a symbol
         reader_ungetc(reader, c);
         return (AST_TYPE){
           .type=AST_SYMBOL,
@@ -245,7 +261,7 @@ bool reader_consume_comment(READER *reader) {
       reader->in_comment = FALSE;
     }
   }
-  return FALSE;
+  return TRUE;
 }
 
 
@@ -306,7 +322,7 @@ char reader_read(READER *reader) {
     // reader_contexts are hierachical through their ->list->reader_context
     READER_CONTEXT *reader_context = reader->reader_context;
 
-    // iterate through heirarchy of reader_contexts to find bottom and parent
+    // iterate through heirarchy of reader_contexts to find reader_context and parent
     READER_CONTEXT *parent_reader_context = NULL;
     READER_CONTEXT *parent_parent_reader_context = NULL;
     while (reader_context && reader_context->asttype.type == AST_LIST) {
@@ -324,47 +340,27 @@ char reader_read(READER *reader) {
       // find next cell
       AST_TYPE asttype = reader_next_cell(reader);
       if (asttype.bitfield == AST_NOTYPE.bitfield) {
-        // this is perplexing.  hit EOF while reading first cell or reading
-        //  next cell in list
-        // EOF?, return TRUE iff no parent context
-        //  (implying we must be EOF in root context)
-        //lassert(parent_reader_context == NULL, READER_STATE_ERROR);
-        return 0;
-
+        // if no char available while reading next symbol in root context, return TRUE
+        // else, a sublist remains unclosed
+        return parent_reader_context == reader->reader_context;
+        
       } else if (asttype.terminator) {
         // asttype has terminator flag indicated end of list
         lassert(asttype.type == AST_LIST, READER_STATE_ERROR);
         lassert(parent_reader_context != NULL, READER_STATE_ERROR);
 
-        // "destroy" the parent_reader_context here, but still use struct below
+        // parent_reader_context list is ending, update parent_parent_reader
+        lassert(parent_parent_reader_context != NULL, READER_STATE_ERROR);
+        parent_parent_reader_context->cellheader->List.length++;
+        parent_parent_reader_context->list->reader_context = NULL;
         destroy_reader_context(bs, parent_reader_context);
-        if (parent_reader_context == reader->reader_context) {
-          // root reader has completed, terminate
-          reader->is_completed = TRUE;
-          reader->cell = (CELL*)parent_reader_context->cellheader;
-          reader->reader_context = NULL;
-          return 1;
-
-        } else {
-          // parent_reader_context list is ending, update parent_parent_reader
-          lassert(parent_parent_reader_context != NULL, READER_STATE_ERROR);
-          parent_parent_reader_context->cellheader->List.length++;
-          parent_parent_reader_context->list->reader_context = NULL;
-          continue;
-        }
+        continue;
       } else {
         // new cell
         reader_context = new_reader_context(asttype, bs);
-
-        if (reader->reader_context == NULL) {
-          // reader just beginning set root reader context to this
-          reader->reader_context = reader_context;
-        } else if (parent_reader_context != NULL) {
-          // set parent_reader_context to be currently reading reader_context
-          parent_reader_context->list->reader_context = reader_context;
-        } else {
-          lerror(READER_STATE_ERROR, "shouldn't reach");
-        }
+        
+        // set parent_reader_context to be currently reading reader_context
+        parent_reader_context->list->reader_context = reader_context;
       }
     }
 
@@ -380,20 +376,11 @@ char reader_read(READER *reader) {
           return 0;
         }
       }
+      parent_reader_context->cellheader->List.length++;
+      parent_reader_context->list->reader_context = NULL;
       destroy_reader_context(bs, reader_context);
       reader_context = NULL;
-      if (parent_reader_context) {
-        parent_reader_context->cellheader->List.length++;
-        parent_reader_context->list->reader_context = NULL;
-        continue;
-      } else {
-        // root reader_context terminating symbol read
-        lassert(reader_context == reader->reader_context, READER_STATE_ERROR);
-        reader->is_completed = TRUE;
-        reader->cell = (CELL*)reader_context->cellheader;
-        reader->reader_context = NULL;
-        return 1;
-      }
+      continue;
 
     } else if (asttype_type == AST_LIST) {
       continue;
@@ -416,7 +403,7 @@ void reader_visit(
   LIST *framestack = list_new(e->bs);
   lassert(reader->putc != NULL, READER_STATE_ERROR);
 
-  CELLHEADER *cellheader = (CELLHEADER*)reader->cell;
+  CELLHEADER *cellheader = reader->reader_context->cellheader;
 
   while (cellheader) {
     FRAME *parentframe = list_first(framestack);
@@ -479,7 +466,7 @@ char reader_pprint(READER *reader) {
   } FRAME;
 
   READER_CONTEXT *reader_context = reader->reader_context;
-  CELLHEADER *cellheader = (CELLHEADER*)reader->cell;
+  CELLHEADER *cellheader = reader_context->cellheader;
 
   while (cellheader) {
     FRAME *parentcellheader = list_first(cellstack);

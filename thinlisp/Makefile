@@ -29,7 +29,7 @@ RL_LIBRARY ?= readline
 CFLAGS += -DUSE_READLINE=1
 endif
 
-CFLAGS += $(GLIB_CFLAGS) -I$(PWD)
+CFLAGS += $(GLIB_CFLAGS) -I.
 CFLAGS += $(GLIB_CFLAGS)
 #LDFLAGS += -l$(RL_LIBRARY) $(GLIB_LDFLAGS) -ldl -lffi -L/usr/local/Cellar/readline/6.2.4/lib/
 LDFLAGS += -l$(RL_LIBRARY) $(GLIB_LDFLAGS) -ldl -lffi

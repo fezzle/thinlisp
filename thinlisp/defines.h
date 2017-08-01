@@ -30,10 +30,12 @@ typedef char bool;
 #define AST_COMMA (AST_AT + 4)
 #define AST_AMPERSAND (AST_AT + 5)
 #define AST_COMMA_AT (AST_AT + 6)
-#define AST_QUOTE_HASH (AST_AT + 7)
+//#define AST_QUOTE_HASH (AST_AT + 7) does not exist?
 #define AST_SINGLEQUOTE (AST_AT + 8)
 #define AST_MINUS (AST_AT + 9)
 #define AST_PLUS (AST_AT + 10)
+#define AST_HASH (AST_AT + 11)
+#define AST_HASH_QUOTE (AST_AT + 12)
 
 static const char AST_1PREFIX[] = { 'X', '@', '\"', '`', '\'', ',', '&', 0, 0 };
 #define AST_2PREFIX_OFFSET (sizeof(AST_1PREFIX) / sizeof(char))
@@ -48,7 +50,8 @@ static const char AST_2PREFIX[][2] = { {'X', 'X'},
    (X) == AST_COMMA ? PSTR(",") :			\
    (X) == AST_AMPERSAND ? PSTR("&") :			\
    (X) == AST_COMMA_AT ? PSTR(",@") :			\
-   (X) == AST_QUOTE_HASH ? PSTR("'#") : PSTR(""))
+   (X) == AST_HASH ? PSTR("#") :			\
+   (X) == AST_HASH_QUOTE ? PSTR("#'") : PSTR(""))
 
 #define AST_POSTFIX_STR(X) ((X).prefix == AST_DOUBLEQUOTE ? PSTR("\"") : PSTR(""))
 
