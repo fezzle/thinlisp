@@ -318,6 +318,13 @@ void destroy_reader_context(BISTACK *bs, READER_CONTEXT *reader_context) {
 char reader_read(READER *reader) {
   BISTACK *bs = reader->environment->bs;
 
+  // consume all comments if currently in comment
+  if (reader->in_comment) {
+    if (reader_consume_comment(reader) == FALSE) {
+      return FALSE;
+    }
+  }
+
   while (1) {
     // reader_contexts are hierachical through their ->list->reader_context
     READER_CONTEXT *reader_context = reader->reader_context;

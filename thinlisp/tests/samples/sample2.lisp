@@ -166,7 +166,7 @@
 
 (defun foo
        (&optional x
-        &key y)
+        &key y))
 
 (defvar pi
   3.14
@@ -406,7 +406,7 @@
 
 (multiple-value-call #'%expand-cons (rest form)
   (second form) nil
-  (%expand-list (cddr form))
+  (%expand-list (cddr form)))
 
 (multiple-value-list
   (floor a b))
