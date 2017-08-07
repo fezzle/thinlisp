@@ -1,5 +1,9 @@
 #include "utils.h"
 
+const static uint8_t SHUFFLED_NIBBLE[] = {
+  1, 5, 12, 4, 8, 13, 7, 15, 11, 9, 10, 2, 0, 14, 6, 3
+};
+
 uint32_t fnv_32_buf(void *datap, int datalen, uint32_t offset_basis) {
   /* Adapted from: http://www.isthe.com/chongo/tech/comp/fnv/#FNV-0
   */
@@ -21,11 +25,16 @@ uint32_t hashstr(char *str, int strlen) {
   return fnv_32_buf(str, strlen, FNV1_32_INIT);
 }
 
-uint16_t hashstr_8(char *str, int strlen) {
-  // this reduces to 8 bits hash
-  uint32_t hash = fnv_32_buf(str, strlen, FNV1_32_INIT);
-  hash = (((hash>>8) ^ hash) & TINY_MASK(8));
-  return (uint16_t)hash;
+uint8_t hashstr_8(char *str, int strlen) {
+  // A NIBBLE based pearson hash
+  uint8_t hash = 0;
+  for (int i=0; i<strlen; i++) {
+    uint8_t newindex = hash + (uint8_t)str[i];
+    hash = (
+      (SHUFFLED_NIBBLE[newindex >> 4] << 4) + 
+      SHUFFLED_NIBBLE[newindex & 0xf]);
+  }
+  return hash;
 }
 
 

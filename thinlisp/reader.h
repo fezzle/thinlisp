@@ -64,6 +64,7 @@ typedef struct reader {
   uint8_t in_comment:1;
 
   READER_CONTEXT *reader_context;
+  READER_CONTEXT *put_missing_state;
 } READER;
 
 ENVIRONMENT *environment_new(BISTACK *bs);
@@ -71,6 +72,7 @@ READER *reader_new(ENVIRONMENT *e);
 char reader_consume_comment(READER *reader);
 char reader_read(READER *reader);
 char reader_pprint(READER *reader);
+bool reader_put_missing(READER *reader);
 READER_CONTEXT *new_reader_context(AST_TYPE asttype, BISTACK *bs);
 
 static inline char reader_getc(READER *r) {

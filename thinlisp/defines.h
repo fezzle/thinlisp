@@ -12,6 +12,17 @@
 #define FALSE 0
 #endif
 
+#ifndef POSIX
+#define POSIX
+#endif
+
+#ifndef PSTR
+#define PSTR(X) ((char*)(X))
+#define strncmp_P strncmp
+#define strncpy_P strncpy
+#endif
+
+
 typedef char bool;
 
 // low 2 bits of AST type are numeration
@@ -22,43 +33,46 @@ typedef char bool;
 #define AST_LIST 3
 #define AST_STRING 4
 
-#define AST_NOPREFIX 0
-#define AST_AT ((uint8_t) 1)
-#define AST_DOUBLEQUOTE (AST_AT + 1)
-#define AST_QUASIQUOTE (AST_AT + 2)
-#define AST_QUOTE (AST_AT + 3)
-#define AST_COMMA (AST_AT + 4)
-#define AST_AMPERSAND (AST_AT + 5)
-#define AST_COMMA_AT (AST_AT + 6)
-//#define AST_QUOTE_HASH (AST_AT + 7) does not exist?
-#define AST_SINGLEQUOTE (AST_AT + 8)
-#define AST_MINUS (AST_AT + 9)
-#define AST_PLUS (AST_AT + 10)
-#define AST_HASH (AST_AT + 11)
-#define AST_HASH_QUOTE (AST_AT + 12)
+enum {
+  AST_NOPREFIX=0,
+  AST_COMMA, 
+  AST_AT,
+  AST_COMMA_AT,
+  AST_HASH_QUOTE,
+  AST_HASH,
+  AST_QUOTE,
+  AST_DOUBLEQUOTE,
+  AST_QUOTE_HASH,
+  AST_QUASIQUOTE,
+  AST_PLUS,
+  AST_MINUS,
+};
 
-static const char AST_1PREFIX[] = { 'X', '@', '\"', '`', '\'', ',', '&', 0, 0 };
-#define AST_2PREFIX_OFFSET (sizeof(AST_1PREFIX) / sizeof(char))
-static const char AST_2PREFIX[][2] = { {'X', 'X'},
-				       { ',', '@'},
-				       {'\'', '#' } };
+#define AST_SINGLEQUOTE AST_QUOTE
 
-#define AST_PREFIX_STR(X)				\
-  ((X) == AST_AT ? PSTR("@") :			\
-   (X) == AST_DOUBLEQUOTE ? PSTR("\"") :			\
-   (X) == AST_QUASIQUOTE ? PSTR("`") :			\
-   (X) == AST_COMMA ? PSTR(",") :			\
-   (X) == AST_AMPERSAND ? PSTR("&") :			\
-   (X) == AST_COMMA_AT ? PSTR(",@") :			\
-   (X) == AST_HASH ? PSTR("#") :			\
-   (X) == AST_HASH_QUOTE ? PSTR("#'") : PSTR(""))
-
-#define AST_POSTFIX_STR(X) ((X).prefix == AST_DOUBLEQUOTE ? PSTR("\"") : PSTR(""))
-
-#define BIT31 ((int32_t)1<<31)
-#define BIT30 ((int32_t)1<<30)
-#define BIT15 ((int16_t)1<<15)
-#define BIT14 ((int16_t)1<<14)
+#define AST_PREFIX_STR(X) \
+  ( \
+    (X) == AST_COMMA ? PSTR(",") : \
+    (X) == AST_AT ? PSTR("@") : \
+    (X) == AST_COMMA_AT ? PSTR(",@") :	\
+    (X) == AST_HASH_QUOTE ? PSTR("#'") : \
+    (X) == AST_HASH ? PSTR("#") : \
+    (X) == AST_QUOTE ? PSTR("'") :	\
+    (X) == AST_QUOTE_HASH ? PSTR("'#") : \
+    (X) == AST_QUASIQUOTE ? PSTR("`") : \
+    (X) == AST_COMMA ? PSTR(",") :	\
+    (X) == AST_PLUS ? PSTR("+") : \
+    (X) == AST_MINUS ? PSTR("-") : \
+    (X) == AST_DOUBLEQUOTE ? PSTR("\"") : \
+    PSTR("") \
+  )
+   
+  
+#define AST_POSTFIX_STR(X) \
+  ( \
+    (X) == AST_DOUBLEQUOTE ? PSTR("\"") : \
+    PSTR("") \
+  )
 
 typedef struct ast_type {
   union {
@@ -71,12 +85,16 @@ typedef struct ast_type {
   };
 } AST_TYPE;
 
+#define CELL_SYMBOL_PREFIX_BITS 3
+#define CELL_SYMBOL_LENGTH_BITS 6
+
 typedef union {
   /* Symbol Type */
   struct {
     uint16_t type : 2;
-    uint16_t length : 6;
-    uint16_t hash : 8;
+    uint16_t length : CELL_SYMBOL_LENGTH_BITS;
+    uint16_t prefix : CELL_SYMBOL_PREFIX_BITS;
+    uint16_t hash : 5;
   } Symbol;
 
   /* Integer type */
@@ -121,4 +139,3 @@ inline CELL *get_cell(CELLHEADER *cellheader) {
 
 
 #endif
-

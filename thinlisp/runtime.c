@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <setjmp.h>
 
+#include "defines.h"
 #include "runtime.h"
 
 jmp_buf __jmpbuff;

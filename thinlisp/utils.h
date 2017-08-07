@@ -16,6 +16,5 @@
 
 uint32_t fnv_32_buf(void *datap, int datalen, uint32_t offset_basis);
 uint32_t hashstr(char *str, int strlen);
-uint16_t hashstr_8(char *str, int strlen);
-
+uint8_t hashstr_8(char *str, int strlen);
 #endif

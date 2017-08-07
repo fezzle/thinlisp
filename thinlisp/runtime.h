@@ -25,14 +25,4 @@ extern jmp_buf __jmpbuff;
 void lerror(uint16_t exctype, char *err, ...);
 void lassert(uint16_t truefalse, uint16_t exctype, ...);
 
-#ifndef POSIX
-#define POSIX
-#endif
-
-#ifndef PSTR
-#define PSTR(X) ((char*)(X))
-#define strncmp_P strncmp
-#define strncpy_P strncpy
-#endif
-
 #endif
