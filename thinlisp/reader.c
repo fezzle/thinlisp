@@ -22,6 +22,7 @@ READER *reader_new(ENVIRONMENT *e) {
   READER *r = bistack_alloc(e->bs, sizeof(READER));
   r->environment = e;
   r->in_comment = FALSE;
+  r->put_missing_reader_context = FALSE;
   r->reader_context = new_reader_context(
     (AST_TYPE){ 
       .type = AST_LIST,
@@ -310,295 +311,311 @@ READER_CONTEXT *new_reader_context(AST_TYPE asttype, BISTACK *bs) {
   return rc;
 }
 
-/**
- * Destroys a reader context and asserts the rewind mark matches its mark
- */
+
 void destroy_reader_context(BISTACK *bs, READER_CONTEXT *reader_context) {
-  void *rewind_mark = bistack_rewind(bs);
-  lassert(rewind_mark == reader_context->rewindmark, READER_STATE_ERROR);
+    /**
+    * Destroys a reader context and asserts the rewind mark matches its mark
+    */
+    void *rewind_mark = bistack_rewind(bs);
+    lassert(rewind_mark == reader_context->rewindmark, READER_STATE_ERROR);
 }
 
 
 bool reader_put_missing(READER *reader) {
-  /**
-   * calls `reader_putc` with the characters missing to conclude the read.
-   */
-  lassert(reader->putc != NULL, READER_STATE_ERROR);
+    /**
+    * calls `reader_putc` with the characters missing to conclude the read.
+    */
+    lassert(reader->putc != NULL, READER_STATE_ERROR);
 
-  if (reader->put_missing_reader_context == NULL) {
-    reader->put_missing_reader_context = (
-      reader->reader_context->list->reader_context);
-  }
-
-  READER_CONTEXT *&reader_context = &reader->put_missing_reader_context;
-
-  while (reader_context) {
-    if (reader_context->asttype.type == AST_SYMBOL 
-        && reader_context->asttype.prefix == AST_DOUBLEQUOTE) {
-      if (!reader_putc(reader, '"')) {
-        return FALSE;
-      }
-      reader_context = NULL;
-    } else if (reader_context->asttype.type == AST_LIST) {
-      if (!reader_putc(reader, ')')) {
-        return FALSE;
-      }
-      reader_context = reader_context->list->reader_context;
+    if (reader->put_missing_reader_context == NULL) {
+        reader->put_missing_reader_context = (
+        reader->reader_context->list->reader_context);
     }
-  }
-  lassert(reader_context == NULL, READER_STATE_ERROR);
-  return TRUE;
+
+    while (reader->put_missing_reader_context) {
+        READER_CONTEXT *reader_context = reader->put_missing_reader_context;
+        AST_TYPE asttype = reader_context->asttype;
+        char end_char = '?';
+        if (asttype.type == AST_SYMBOL) {
+            end_char = asttype.prefix == AST_DOUBLEQUOTE ? '"' : '_';
+        } else if (asttype.type == AST_INTEGER) {
+            end_char = '#';
+        } else if (asttype.type == AST_LIST) {
+            end_char = ')';
+        }
+
+        if (!reader_putc(reader, end_char)) {
+            return FALSE;
+        } else if (asttype.type == AST_LIST) {
+            reader->put_missing_reader_context = reader_context->list->reader_context;
+        } else {
+            // current reader_context is not a list - printing is done
+            reader->put_missing_reader_context = NULL;
+        }
+    }
+    return TRUE;
 }
 
 
 char reader_read(READER *reader) {
-  BISTACK *bs = reader->environment->bs;
+    BISTACK *bs = reader->environment->bs;
 
-  // consume all comments if currently in comment
-  if (reader->in_comment) {
-    if (reader_consume_comment(reader) == FALSE) {
-      return FALSE;
-    }
-  }
-
-  while (1) {
-    // reader_contexts are hierachical through their ->list->reader_context
-    READER_CONTEXT *reader_context = reader->reader_context;
-
-    // iterate through heirarchy of reader_contexts to find reader_context and parent
-    READER_CONTEXT *parent_reader_context = NULL;
-    READER_CONTEXT *parent_parent_reader_context = NULL;
-    while (reader_context && reader_context->asttype.type == AST_LIST) {
-      parent_parent_reader_context = parent_reader_context;
-      parent_reader_context = reader_context;
-      reader_context = reader_context->list->reader_context;
-    }
-
-    lassert(
-      parent_reader_context == NULL ||
-      parent_reader_context->asttype.type == AST_LIST,
-      READER_STATE_ERROR);
-
-    if (reader_context == NULL) {
-      // find next cell
-      AST_TYPE asttype = reader_next_cell(reader);
-      if (asttype.bitfield == AST_NOTYPE.bitfield) {
-        // if no char available while reading next symbol in root context, return TRUE
-        // else, a sublist remains unclosed
-        return parent_reader_context == reader->reader_context;
-        
-      } else if (asttype.terminator) {
-        // asttype has terminator flag indicated end of list
-        lassert(asttype.type == AST_LIST, READER_STATE_ERROR);
-        lassert(parent_reader_context != NULL, READER_STATE_ERROR);
-
-        // parent_reader_context list is ending, update parent_parent_reader
-        lassert(parent_parent_reader_context != NULL, READER_STATE_ERROR);
-        parent_parent_reader_context->cellheader->List.length++;
-        parent_parent_reader_context->list->reader_context = NULL;
-        destroy_reader_context(bs, parent_reader_context);
-        continue;
-
-      } else {
-        // new cell
-        reader_context = new_reader_context(asttype, bs);
-        
-        // set parent_reader_context to be currently reading reader_context
-        parent_reader_context->list->reader_context = reader_context;
-      }
-
-    }
-
-    uint8_t asttype_type = reader_context->asttype.type;
-
-    if (asttype_type == AST_INTEGER || asttype_type == AST_SYMBOL) {
-      if (asttype_type == AST_SYMBOL) {
-        if (!reader_symbol_context(reader, reader_context)) {
-          return 0;
+    // consume all comments if currently in comment
+    if (reader->in_comment) {
+        if (reader_consume_comment(reader) == FALSE) {
+        return FALSE;
         }
-      } else if (asttype_type == AST_INTEGER) {
-        if (!reader_integer_context(reader, reader_context)) {
-          return 0;
-        }
-      }
-      parent_reader_context->cellheader->List.length++;
-      parent_reader_context->list->reader_context = NULL;
-      destroy_reader_context(bs, reader_context);
-      reader_context = NULL;
-      continue;
-
-    } else if (asttype_type == AST_LIST) {
-      continue;
     }
-  }
-  lerror(READER_STATE_ERROR, "unexpectedly reached end of reader loop");
+
+    while (1) {
+        // reader_contexts are hierachical through their ->list->reader_context
+        READER_CONTEXT *reader_context = reader->reader_context;
+
+        // iterate through heirarchy of reader_contexts to find reader_context and parent
+        READER_CONTEXT *parent_reader_context = NULL;
+        READER_CONTEXT *parent_parent_reader_context = NULL;
+        while (reader_context && reader_context->asttype.type == AST_LIST) {
+        parent_parent_reader_context = parent_reader_context;
+        parent_reader_context = reader_context;
+        reader_context = reader_context->list->reader_context;
+        }
+
+        lassert(
+        parent_reader_context == NULL ||
+        parent_reader_context->asttype.type == AST_LIST,
+        READER_STATE_ERROR);
+
+        if (reader_context == NULL) {
+            // find next cell
+            AST_TYPE asttype = reader_next_cell(reader);
+            if (asttype.bitfield == AST_NOTYPE.bitfield) {
+                // if no char available while reading next symbol in root context, return TRUE
+                // else, a sublist remains unclosed
+                return parent_reader_context == reader->reader_context;
+                
+            } else if (asttype.terminator) {
+                // asttype has terminator flag indicated end of list
+                lassert(asttype.type == AST_LIST, READER_STATE_ERROR);
+                lassert(parent_reader_context != NULL, READER_STATE_ERROR);
+
+                // parent_reader_context list is ending, update parent_parent_reader
+                lassert(parent_parent_reader_context != NULL, READER_STATE_ERROR);
+                parent_parent_reader_context->cellheader->List.length++;
+                parent_parent_reader_context->list->reader_context = NULL;
+                destroy_reader_context(bs, parent_reader_context);
+                continue;
+
+            } else {
+                // new cell
+                reader_context = new_reader_context(asttype, bs);
+                
+                // set parent_reader_context to be currently reading reader_context
+                parent_reader_context->list->reader_context = reader_context;
+            }
+
+        }
+
+        uint8_t asttype_type = reader_context->asttype.type;
+
+        if (asttype_type == AST_INTEGER || asttype_type == AST_SYMBOL) {
+            if (asttype_type == AST_SYMBOL) {
+                if (!reader_symbol_context(reader, reader_context)) {
+                    return 0;
+                }
+            } else if (asttype_type == AST_INTEGER) {
+                if (!reader_integer_context(reader, reader_context)) {
+                    return 0;
+                }
+            }
+            parent_reader_context->cellheader->List.length++;
+            parent_reader_context->list->reader_context = NULL;
+            destroy_reader_context(bs, reader_context);
+            reader_context = NULL;
+            continue;
+
+        } else if (asttype_type == AST_LIST) {
+            continue;
+        }
+    }
+    lerror(READER_STATE_ERROR, "unexpectedly reached end of reader loop");
 }
 
 
 char reader_visit(
-    READER *reader,
-    void *ctx,
-    bool (*visit_fn)(READER *reader, CELL *cell, void *ctx)) {
+        READER *reader,
+        void *ctx,
+        bool (*visit_fn)(READER *reader, CELL *cell, void *ctx)) {
 
-  typedef struct frame {
-    CELLHEADER *cellheader;
-    uint8_t subcellcounter;
-  } FRAME;
+    typedef struct frame {
+        CELLHEADER *cellheader;
+        uint8_t counter;
+    } FRAME;
 
-  ENVIRONMENT *e = reader->environment;
-  LIST *framestack = list_new(e->bs);
-  lassert(reader->putc != NULL, READER_STATE_ERROR);
+    ENVIRONMENT *e = reader->environment;
+    LIST *framestack = list_new(e->bs);
+    lassert(reader->putc != NULL, READER_STATE_ERROR);
 
-  CELLHEADER *cellheader = reader->reader_context->cellheader;
+    CELLHEADER *cellheader = reader->reader_context->cellheader;
 
-  while (cellheader) {
-    FRAME *parentframe = list_first(framestack);
+    // cell loop
+    while (cellheader) {
 
-    if (parentframe != NULL && parentframe->subcellcounter == 0) {
-      // parent list is now empty, terminate list and pop cellstack
-      visit_fn(reader, (CELL*)parentframe->cellheader, ctx);
-      list_shift(framestack);
-      parentframe = list_first(framestack);
-      if (parentframe) {
-        parentframe->subcellcounter--;
-      } else {
-        cellheader = NULL;
-      }
-      continue;
+        if (parentframe != NULL && parentframe->counter == 0) {
+            // parent list is now empty, terminate list and pop cellstack
+            visit_fn(reader, (CELL*)parentframe->cellheader, ctx);
+            list_shift(framestack);
+            parentframe = list_first(framestack);
+            if (parentframe) {
+                parentframe->counter--;
+            } else {
+                cellheader = NULL;
+            }
+            continue;
+        }
+        lassert(
+        !parentframe || parentframe->counter > 0,
+        READER_STATE_ERROR);
+
+        if (cellheader->Symbol.type == AST_SYMBOL) {
+            visit_fn(reader, (CELL*)cellheader, ctx);
+
+            cellheader = (CELLHEADER*)(
+                &((CELL*)cellheader)->string[cellheader->Symbol.length]);
+            if (parentframe) {
+                parentframe->counter--;
+            }
+        } else if (cellheader->Integer.type == AST_INTEGER) {
+            visit_fn(reader, (CELL*)cellheader, ctx);
+
+            cellheader = &cellheader[1];
+            if (parentframe) {
+                parentframe->counter--;
+            }
+        } else if (cellheader->List.type == AST_LIST) {
+            FRAME *newframe = bistack_alloc(e->bs, sizeof(FRAME));
+            newframe->counter = cellheader->List.length;
+            newframe->cellheader = cellheader;
+            list_unshift(framestack, e->bs, newframe);
+            cellheader = ((CELL*)cellheader)->cells;
+            parentframe = list_first(framestack);
+        }
     }
-    lassert(
-      !parentframe || parentframe->subcellcounter > 0,
-      READER_STATE_ERROR);
-
-    if (cellheader->Symbol.type == AST_SYMBOL) {
-      visit_fn(reader, (CELL*)cellheader, ctx);
-
-      cellheader = (CELLHEADER*)(
-        &((CELL*)cellheader)->string[cellheader->Symbol.length]);
-      if (parentframe) {
-        parentframe->subcellcounter--;
-      }
-
-    } else if (cellheader->Integer.type == AST_INTEGER) {
-      visit_fn(reader, (CELL*)cellheader, ctx);
-
-      cellheader = &cellheader[1];
-      if (parentframe) {
-        parentframe->subcellcounter--;
-      }
-
-    } else if (cellheader->List.type == AST_LIST) {
-      FRAME *newframe = bistack_alloc(e->bs, sizeof(FRAME));
-      newframe->subcellcounter = cellheader->List.length;
-      newframe->cellheader = cellheader;
-      list_unshift(framestack, e->bs, newframe);
-      cellheader = ((CELL*)cellheader)->cells;
-      parentframe = list_first(framestack);
-    }
-  }
 }
 
 
 char reader_pprint(READER *reader) {
-  ENVIRONMENT *e = reader->environment;
-  lassert(reader->putc != NULL, READER_STATE_ERROR);
+    ENVIRONMENT *e = reader->environment;
+    lassert(reader->putc != NULL, READER_STATE_ERROR);
 
-  uint8_t indent = 0;
+    uint8_t indent = 0;
 
-  LIST *cellstack = list_new(e->bs);
+    LIST *cellstack = list_new(e->bs);
 
-  typedef struct frame {
-    CELLHEADER *cellheader;
-    uint8_t counter;
-  } FRAME;
+    typedef struct frame {
+        CELLHEADER *cellheader;
+        uint8_t counter;
+    } FRAME;
 
-  READER_CONTEXT *reader_context = reader->reader_context;
-  CELLHEADER *cellheader = reader_context->cellheader;
+    typedef struct pprint_context {
+        FRAME *topframe;
+        uint8_t is_printing_newline:1;
+    } PPRINT_CONTEXT;
 
-  while (cellheader) {
-    FRAME *parentcellheader = list_first(cellstack);
-
-    if (parentcellheader != NULL && parentcellheader->counter == 0) {
-      // parent list is now empty, terminate list and pop cellstack
-      indent--;
-      reader_putc(reader, ')');
-      reader_putc(reader, '\n');
-      for (uint8_t n=0; n<indent; n++) {
-        reader_putc(reader, ' ');
-      }
-      list_shift(cellstack);
-      parentcellheader = list_first(cellstack);
-      if (parentcellheader) {
-        parentcellheader->counter--;
-      } else {
-        cellheader = NULL;
-      }
-      continue;
+    PPRINT_CONTEXT *pprint_context;
+    if (reader->pprint_context == NULL) {
+        // first call, create context
+        pprint_context = bistack_alloc(reader->environment->bs);
+        pprint_context->topframe = NULL;
+        reader->pprint_context = pprint_context;
     }
 
-    char is_start_of_list = parentcellheader == NULL || (
-      parentcellheader->cellheader->List.length ==
-        parentcellheader->counter);
+    READER_CONTEXT *reader_context = reader->reader_context;
+    CELLHEADER *cellheader = reader_context->cellheader;
 
-    lassert(
-      !parentcellheader || parentcellheader->counter > 0,
-      READER_STATE_ERROR);
+    while (cellheader) {
+        FRAME *parentcellheader = list_first(cellstack);
 
-    if (cellheader->Symbol.type == AST_SYMBOL) {
-      CELL *cell = (CELL*)cellheader;
-      if (!is_start_of_list) {
-        reader_putc(reader, ' ');
-      }
+        if (parentcellheader != NULL && parentcellheader->counter == 0) {
+            // parent list is now empty, terminate list and pop cellstack
+            indent--;
+            reader_putc(reader, ')');
+            reader_putc(reader, '\n');
+            for (uint8_t n=0; n<indent; n++) {
+                reader_putc(reader, ' ');
+            }
+            list_shift(cellstack);
+            parentcellheader = list_first(cellstack);
+            if (parentcellheader) {
+                parentcellheader->counter--;
+            } else {
+                cellheader = NULL;
+            }
+            continue;
+        }
 
-      reader_putstr(reader, AST_PREFIX_STR(cellheader->Symbol.prefix));
-      for (int i=0; i<cellheader->Symbol.length; i++) {
-        reader_putc(reader, ((char*)(&cellheader[1]))[i]);
-      }
-      reader_putstr(reader, AST_POSTFIX_STR(cellheader->Symbol.prefix));
+        char is_start_of_list = parentcellheader == NULL || (
+            parentcellheader->cellheader->List.length == 
+                parentcellheader->counter);
 
-      cellheader = (CELLHEADER*)(
-        &((CELL*)cellheader)->string[cellheader->Symbol.length]);
-      if (parentcellheader) {
-        parentcellheader->counter--;
-      }
-    
-    } else if (cellheader->Integer.type == AST_INTEGER) {
-      if (!is_start_of_list) {
-        reader_putc(reader, ' ');
-      }
-      reader_putc(reader, cellheader->Integer.sign ? '+' : '-');
-      uint16_t value = cellheader->Integer.value;
+        lassert(
+            !parentcellheader || parentcellheader->counter > 0,
+            READER_STATE_ERROR);
 
-      // print_zeros switches to true on first non-zero digit
-      char print_zeros = 0;
-      print_zeros |= putc_tens(reader, value, 10000, FALSE);
-      print_zeros |= putc_tens(reader, value, 1000, print_zeros);
-      print_zeros |= putc_tens(reader, value, 100, print_zeros);
-      print_zeros |= putc_tens(reader, value, 10, print_zeros);
-      putc_tens(reader, value, 1, TRUE);
+        if (cellheader->Symbol.type == AST_SYMBOL) {
+            CELL *cell = (CELL*)cellheader;
+            if (!is_start_of_list) {
+                reader_putc(reader, ' ');
+            }
 
-      cellheader = &cellheader[1];
-      if (parentcellheader) {
-        parentcellheader->counter--;
-      }
+            reader_putstr(reader, AST_PREFIX_STR(cellheader->Symbol.prefix));
+            for (int i=0; i<cellheader->Symbol.length; i++) {
+                reader_putc(reader, ((char*)(&cellheader[1]))[i]);
+            }
+            reader_putstr(reader, AST_POSTFIX_STR(cellheader->Symbol.prefix));
 
-    } else if (cellheader->List.type == AST_LIST) {
-      reader_putstr(reader, AST_PREFIX_STR(cellheader->List.prefix));
-      reader_putc(reader, '\n');
-      for (uint8_t n=0; n<indent; n++) {
-        reader_putc(reader, ' ');
-      }
-      reader_putc(reader, '(');
+            cellheader = (CELLHEADER*)(
+                &((CELL*)cellheader)->string[cellheader->Symbol.length]);
+            if (parentcellheader) {
+                parentcellheader->counter--;
+            }
+            
+        } else if (cellheader->Integer.type == AST_INTEGER) {
+            if (!is_start_of_list) {
+                reader_putc(reader, ' ');
+            }
+            reader_putc(reader, cellheader->Integer.sign ? '+' : '-');
+            uint16_t value = cellheader->Integer.value;
 
-      FRAME *newframe = bistack_alloc(e->bs, sizeof(FRAME));
-      newframe->counter = cellheader->List.length;
-      newframe->cellheader = cellheader;
-      list_unshift(cellstack, e->bs, newframe);
-      cellheader = ((CELL*)cellheader)->cells;
+            // print_zeros switches to true on first non-zero digit
+            char print_zeros = 0;
+            print_zeros |= putc_tens(reader, value, 10000, FALSE);
+            print_zeros |= putc_tens(reader, value, 1000, print_zeros);
+            print_zeros |= putc_tens(reader, value, 100, print_zeros);
+            print_zeros |= putc_tens(reader, value, 10, print_zeros);
+            putc_tens(reader, value, 1, TRUE);
 
-      parentcellheader = list_first(cellstack);
-      indent++;
+            cellheader = &cellheader[1];
+            if (parentcellheader) {
+                parentcellheader->counter--;
+            }
+
+        } else if (cellheader->List.type == AST_LIST) {
+            reader_putstr(reader, AST_PREFIX_STR(cellheader->List.prefix));
+            reader_putc(reader, '\n');
+            for (uint8_t n=0; n<indent; n++) {
+                reader_putc(reader, ' ');
+            }
+            reader_putc(reader, '(');
+
+            FRAME *newframe = bistack_alloc(e->bs, sizeof(FRAME));
+            newframe->counter = cellheader->List.length;
+            newframe->cellheader = cellheader;
+            list_unshift(cellstack, e->bs, newframe);
+            cellheader = ((CELL*)cellheader)->cells;
+
+            parentcellheader = list_first(cellstack);
+            indent++;
+        }
     }
-  }
-  return 0;
+    return 0;
 }
