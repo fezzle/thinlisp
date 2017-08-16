@@ -59,5 +59,20 @@ void *list_pop(LIST *list);
 void *list_unshift(LIST *list, BISTACK *bs, void *val);
 void *list_shift(LIST *list);
 
-void *list_first(LIST *list);
+void *list_first(LIST *list) {
+    if (list->head != NULL) {
+        return list->head->val;
+    } else {
+        return NULL;
+    }
+}
+
+void *list_second(LIST *list) {
+    LIST_NODE *head = list->head;
+    if (head != NULL && head->next != NULL) {
+        return head->next->val;
+    } else {
+        reutrn NULL;
+    }
+}
 #endif

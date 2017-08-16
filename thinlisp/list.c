@@ -222,14 +222,6 @@ int ms_strncmp(MULTISTRING *ms, char *strb, int n) {
   return 0;
 }
 
-void *list_first(LIST *list) {
-  if (list->head != NULL) {
-    return list->head->val;
-  } else {
-    return NULL;
-  }
-}
-
 
 #ifdef LIST_TEST
 #include <stdio.h>

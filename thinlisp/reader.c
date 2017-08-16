@@ -238,19 +238,20 @@ bool reader_symbol_context(READER *reader, READER_CONTEXT *reader_context) {
 /**
  * @return TRUE iff a non-zero digit was printed
  */
-char putc_tens(READER *r, uint16_t value, uint16_t tens, char print_zero) {
+char putc_tens(READER *r, uint16_t &value, uint16_t tens, char &print_zero) {
   char c = '0';
   for (; value >= tens; value -= tens) {
     c++;
   }
   if (print_zero || c > '0') {
-    reader_putc(r, c);
+    return reader_putc(r, c);
+  } else { 
+    return TRUE;
   }
-  return c > '0';
 }
 
 
-bool reader_consume_comment(READER *reader) {
+char reader_consume_comment(READER *reader) {
   // reads comment characters until newline
   while (reader->in_comment) {
     char c = reader_getc(reader);
@@ -327,13 +328,27 @@ bool reader_put_missing(READER *reader) {
     */
     lassert(reader->putc != NULL, READER_STATE_ERROR);
 
-    if (reader->put_missing_reader_context == NULL) {
-        reader->put_missing_reader_context = (
-        reader->reader_context->list->reader_context);
+    struct put_missing_context {
+        READER_CONTEXT *reader_context;
+        void *bistack_mark;
+    } PUT_MISSING_CONTEXT;
+
+    if (reader->put_missing_context == NULL) {
+        // mark and allocate PUT_MISSING_CONTEXT into bistack
+        void *bistack_mark = bistack_mark(reader->environment->bs);
+        reader->put_missing_context = bistack_alloc(
+            reader->environment->bs, sizeof(PUT_MISSING_CONTEXT));
+        
+        // mark the stack and allocate
+        reader->put_missing_context->bistack_mark = bistack_mark;
+        reader->put_missing_context->reader_context = (
+            reader->reader_context->list->reader_context);
     }
 
-    while (reader->put_missing_reader_context) {
-        READER_CONTEXT *reader_context = reader->put_missing_reader_context;
+    while (TRUE) {
+        READER_CONTEXT *reader_context = (
+            reader->put_missing_context->reader_context);
+
         AST_TYPE asttype = reader_context->asttype;
         char end_char = '?';
         if (asttype.type == AST_SYMBOL) {
@@ -346,13 +361,24 @@ bool reader_put_missing(READER *reader) {
 
         if (!reader_putc(reader, end_char)) {
             return FALSE;
-        } else if (asttype.type == AST_LIST) {
-            reader->put_missing_reader_context = reader_context->list->reader_context;
+        } 
+        
+        if (asttype.type == AST_LIST) {
+            // descend into reader_context for sub-list 
+            reader->put_missing_context->reader_context = (
+                reader_context->list->reader_context);
         } else {
             // current reader_context is not a list - printing is done
-            reader->put_missing_reader_context = NULL;
+            break;
         }
     }
+
+    // rewind stack, assert mark is where we started.
+    void *bistack_mark = bistack_rewind(reader->environment->bs);
+    lassert(
+        bistack_mark == reader->put_missing_context->bistack_mark,
+        READER_STATE_ERROR);
+    reader->put_missing_context = NULL;
     return TRUE;
 }
 
@@ -375,9 +401,9 @@ char reader_read(READER *reader) {
         READER_CONTEXT *parent_reader_context = NULL;
         READER_CONTEXT *parent_parent_reader_context = NULL;
         while (reader_context && reader_context->asttype.type == AST_LIST) {
-        parent_parent_reader_context = parent_reader_context;
-        parent_reader_context = reader_context;
-        reader_context = reader_context->list->reader_context;
+            parent_parent_reader_context = parent_reader_context;
+            parent_reader_context = reader_context;
+            reader_context = reader_context->list->reader_context;
         }
 
         lassert(
@@ -440,182 +466,215 @@ char reader_read(READER *reader) {
     lerror(READER_STATE_ERROR, "unexpectedly reached end of reader loop");
 }
 
-
-char reader_visit(
-        READER *reader,
-        void *ctx,
-        bool (*visit_fn)(READER *reader, CELL *cell, void *ctx)) {
-
-    typedef struct frame {
-        CELLHEADER *cellheader;
-        uint8_t counter;
-    } FRAME;
-
-    ENVIRONMENT *e = reader->environment;
-    LIST *framestack = list_new(e->bs);
-    lassert(reader->putc != NULL, READER_STATE_ERROR);
-
-    CELLHEADER *cellheader = reader->reader_context->cellheader;
-
-    // cell loop
-    while (cellheader) {
-
-        if (parentframe != NULL && parentframe->counter == 0) {
-            // parent list is now empty, terminate list and pop cellstack
-            visit_fn(reader, (CELL*)parentframe->cellheader, ctx);
-            list_shift(framestack);
-            parentframe = list_first(framestack);
-            if (parentframe) {
-                parentframe->counter--;
-            } else {
-                cellheader = NULL;
-            }
-            continue;
+uint16_t cellheader_character_count(CELLHEADER *cellheader) { 
+    if (cellheader->List.type == AST_LIST) {
+        uint16_t count = 0;
+        for (uint8_t i=0; i<celleader->List.length; i++) {
+            count += cellheader_character_count(cellheader);
         }
-        lassert(
-        !parentframe || parentframe->counter > 0,
-        READER_STATE_ERROR);
-
-        if (cellheader->Symbol.type == AST_SYMBOL) {
-            visit_fn(reader, (CELL*)cellheader, ctx);
-
-            cellheader = (CELLHEADER*)(
-                &((CELL*)cellheader)->string[cellheader->Symbol.length]);
-            if (parentframe) {
-                parentframe->counter--;
-            }
-        } else if (cellheader->Integer.type == AST_INTEGER) {
-            visit_fn(reader, (CELL*)cellheader, ctx);
-
-            cellheader = &cellheader[1];
-            if (parentframe) {
-                parentframe->counter--;
-            }
-        } else if (cellheader->List.type == AST_LIST) {
-            FRAME *newframe = bistack_alloc(e->bs, sizeof(FRAME));
-            newframe->counter = cellheader->List.length;
-            newframe->cellheader = cellheader;
-            list_unshift(framestack, e->bs, newframe);
-            cellheader = ((CELL*)cellheader)->cells;
-            parentframe = list_first(framestack);
-        }
+        return count;
+    } else if (cellheader->Integer.type == AST_INTEGER) {
+        return 6;
+    } else if (cellheader->Symbol.type == AST_SYMBOL) {
+        return cellheader->Symbol.length;
     }
 }
 
 
 char reader_pprint(READER *reader) {
-    ENVIRONMENT *e = reader->environment;
     lassert(reader->putc != NULL, READER_STATE_ERROR);
 
-    uint8_t indent = 0;
-
-    LIST *cellstack = list_new(e->bs);
-
     typedef struct frame {
+        // pointer to this frame's CELLHEADER
         CELLHEADER *cellheader;
+        // counter counts down list elements, symbol characters or integer tens
         uint8_t counter;
+        // if true, this list frame should print a newline after every element
+        uint8_t is_newline_per_cell;
     } FRAME;
 
     typedef struct pprint_context {
         FRAME *topframe;
-        uint8_t is_printing_newline:1;
+        LIST *frame_stack;
+        void *bistack_mark;
+        uint8_t indent_countdown;
+        uint8_t is_printing_newline;
+        uint8_t indent;
     } PPRINT_CONTEXT;
 
-    PPRINT_CONTEXT *pprint_context;
+    const ENVIRONMENT *e = reader->environment;
+    const PPRINT_CONTEXT *pprint_context;
+
     if (reader->pprint_context == NULL) {
         // first call, create context
-        pprint_context = bistack_alloc(reader->environment->bs);
-        pprint_context->topframe = NULL;
+        void *bistack_mark = bistack_mark(e->bs);
+        pprint_context = bistack_alloc(e->bs);
+        pprint_context->frame_stack = list_new(e->bs);
+        pprint_context->bistack_mark = bistack_mark;
         reader->pprint_context = pprint_context;
+        
+        // push top frame onto stack
+        CELLHEADER *cellheader = reader_context->cellheader;
+        FRAME *top_frame = bistack_alloc(e->bs, sizeof(FRAME));
+        top_frame->cellheader = cellheader;
+        list_unshift(pprint_context->frame_stack, e->bs, top_frame);
+
+    } else {
+        // continue from last invocation
+        pprint_context = reader->pprint_context;
     }
 
-    READER_CONTEXT *reader_context = reader->reader_context;
-    CELLHEADER *cellheader = reader_context->cellheader;
 
-    while (cellheader) {
-        FRAME *parentcellheader = list_first(cellstack);
+    while (TRUE) {
+        FRAME *frame = list_first(frame_stack);
+        FRAME *parent_frame = list_second(frame_stack);
 
-        if (parentcellheader != NULL && parentcellheader->counter == 0) {
-            // parent list is now empty, terminate list and pop cellstack
-            indent--;
-            reader_putc(reader, ')');
-            reader_putc(reader, '\n');
-            for (uint8_t n=0; n<indent; n++) {
-                reader_putc(reader, ' ');
+        if (pprint_context->is_printing_newline) {
+            if (pprint_context->indent_countdown == 0) {
+                // indent_countdown not set yet, print newline
+                if (!reader_putc(reader, '\n')) {
+                    return FALSE;
+                }
+                pprint_context->indent_countdown = pprint_context->indent;
             }
-            list_shift(cellstack);
-            parentcellheader = list_first(cellstack);
-            if (parentcellheader) {
-                parentcellheader->counter--;
-            } else {
-                cellheader = NULL;
+            while (pprint_context->indent_countdown) {
+                if (!reader_putc(reader, ' ')) {
+                    return FALSE;
+                }
+                pprint_context->indent_countdown--;
             }
-            continue;
+            pprint_context->is_printing_newline = FALSE;
         }
 
-        char is_start_of_list = parentcellheader == NULL || (
-            parentcellheader->cellheader->List.length == 
-                parentcellheader->counter);
-
-        lassert(
-            !parentcellheader || parentcellheader->counter > 0,
-            READER_STATE_ERROR);
+        if (frame == NULL) {
+            frame = bistack_alloc(e->bs, sizeof(FRAME));
+            frame->cellheader = cellheader;
+            list_unshift(frame_stack, e->bs, frame);
+        }
 
         if (cellheader->Symbol.type == AST_SYMBOL) {
-            CELL *cell = (CELL*)cellheader;
-            if (!is_start_of_list) {
-                reader_putc(reader, ' ');
+            CELL *cell = (CELL*)frame->cellheader;
+            if (frame->counter == 0) {
+                if (frame->prefix_counter == 0) {
+                    char prefix1 = AST_PREFIX_CHAR1(cellheader->Symbol.prefix);
+                    if (prefix1) {
+                        if (!reader_putc(reader, prefix1)) {
+                            return FALSE;
+                        }
+                        frame->prefix_counter++;
+                    }
+                } 
+                if (frame->prefix_counter == 1) {
+                    char prefix2 = AST_PREFIX_CHAR2(cellheader->Symbol.prefix);
+                    if (prefix2) {
+                        if (!reader_putc(reader, prefix1)) {
+                            return FALSE;
+                        }
+                        frame->prefix_counter++;
+                    }
+                }
+                
+                frame->counter = frame->cellheader->Symbol.length;
             }
-
-            reader_putstr(reader, AST_PREFIX_STR(cellheader->Symbol.prefix));
-            for (int i=0; i<cellheader->Symbol.length; i++) {
-                reader_putc(reader, ((char*)(&cellheader[1]))[i]);
-            }
-            reader_putstr(reader, AST_POSTFIX_STR(cellheader->Symbol.prefix));
-
-            cellheader = (CELLHEADER*)(
-                &((CELL*)cellheader)->string[cellheader->Symbol.length]);
-            if (parentcellheader) {
-                parentcellheader->counter--;
+            while (frame->counter > 0) {
+                if (!reader_putc(reader, ((char*)(&cellheader[1]))[i])) {
+                    return FALSE;
+                }
+                frame->counter--;
             }
             
-        } else if (cellheader->Integer.type == AST_INTEGER) {
-            if (!is_start_of_list) {
-                reader_putc(reader, ' ');
+            if (!reader_putc(
+                        reader, AST_POSTFIX_CHAR(cellheader->Symbol.prefix))) {
+                return FALSE;
             }
-            reader_putc(reader, cellheader->Integer.sign ? '+' : '-');
+            
+            cellheader = (CELLHEADER*)(
+                &((CELL*)cellheader)->string[cellheader->Symbol.length]);
+            list_shift(pprint_context->frame_stack);
+            
+        } else if (cellheader->Integer.type == AST_INTEGER) {
+            // print_zeros switches to true on first non-zero digit
+            char should_print_zeros = FALSE;
             uint16_t value = cellheader->Integer.value;
 
-            // print_zeros switches to true on first non-zero digit
-            char print_zeros = 0;
-            print_zeros |= putc_tens(reader, value, 10000, FALSE);
-            print_zeros |= putc_tens(reader, value, 1000, print_zeros);
-            print_zeros |= putc_tens(reader, value, 100, print_zeros);
-            print_zeros |= putc_tens(reader, value, 10, print_zeros);
-            putc_tens(reader, value, 1, TRUE);
-
+            if (frame->counter == 0) {
+                frame->counter = 6;
+            }
+            switch (frame->counter) {
+            case 6:
+                char sign = cellheader->Integer.sign ? '+' : '-';
+                if (!reader_putc(reader, sign)) {
+                    return FALSE;
+                }
+                frame->counter--;
+            case 5:
+                if (!putc_tens(reader, value, 10000, should_print_zeros)) {
+                    return FALSE;
+                }
+                frame->counter--;
+            case 4:
+                if (!putc_tens(reader, value, 1000, should_print_zeros)) {
+                    return FALSE;
+                }
+                frame->counter--;
+            case 3:
+                if (!putc_tens(reader, value, 100, should_print_zeros)) {
+                    return FALSE;
+                }
+                frame->counter--;
+            case 2:
+                if (!putc_tens(reader, value, 10, should_print_zeros)) {
+                    return FALSE;
+                }
+                frame->counter--;
+            case 1:
+                if (!putc_tens(reader, value, 1, should_print_zeros)) {
+                    return FALSE;
+                }
+                frame->counter--;
+            }
             cellheader = &cellheader[1];
-            if (parentcellheader) {
-                parentcellheader->counter--;
-            }
-
+            list_shift(pprint_context->frame_stack);
+            
         } else if (cellheader->List.type == AST_LIST) {
-            reader_putstr(reader, AST_PREFIX_STR(cellheader->List.prefix));
-            reader_putc(reader, '\n');
-            for (uint8_t n=0; n<indent; n++) {
-                reader_putc(reader, ' ');
+            if (frame->counter == 0) {
+                // parent list is now empty, terminate list and pop framestack
+                if (reader_putc(reader, ')') == FALSE) {
+                    return FALSE;
+                }
+                list_shift(framestack);
+                parentcellheader = list_first(framestack);
+                if (parentcellheader) {
+                    parentcellheader->counter--;
+                } else {
+                    cellheader = NULL;
+                }
+                continue;
             }
-            reader_putc(reader, '(');
 
-            FRAME *newframe = bistack_alloc(e->bs, sizeof(FRAME));
-            newframe->counter = cellheader->List.length;
-            newframe->cellheader = cellheader;
-            list_unshift(cellstack, e->bs, newframe);
+            if (frame->counter == 0) {
+                // todo prefix string state
+                reader_putstr(reader, AST_PREFIX_STR(cellheader->List.prefix));
+                if (!reader_putc(reader, '(')) {
+                    return FALSE;
+                }
+                frame->counter = cellheader->List.length;
+            }
+            newframe->is_newline_per_cell = (
+                cellheader_character_count(cellheader) > 50);
+            list_unshift(framestack, e->bs, newframe);
             cellheader = ((CELL*)cellheader)->cells;
 
-            parentcellheader = list_first(cellstack);
+            parentcellheader = list_first(framestack);
             indent++;
         }
     }
-    return 0;
+
+    // rewind and assert rewound mark is where this continuation began
+    void *bistack_mark = bistack_mark(reader->environment->bs);
+    lassert(
+        bistack_mark == bistack_rewind(reader->environment->bs), 
+        READER_STATE_ERROR);
+    reader->pprint_context = NULL;
+    return TRUE;
 }
