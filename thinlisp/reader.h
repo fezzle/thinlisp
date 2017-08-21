@@ -26,15 +26,15 @@ typedef struct reader_listcontext {
 } READER_LIST_CONTEXT;
 
 typedef struct reader_context {
-    struct {
-        AST_TYPE asttype;
-        CELLHEADER *cellheader;
-        void *rewindmark;
-        union {
+    AST_TYPE asttype;
+    CELLHEADER *cellheader;
+    void *rewindmark;
+
+    // the valid type below is identified by asttype.type
+    union {
         READER_SYMBOL_CONTEXT *symbol;
         READER_INTEGER_CONTEXT *integer;
         READER_LIST_CONTEXT *list;
-        };
     };
 } READER_CONTEXT;
 
@@ -64,14 +64,13 @@ typedef struct reader {
     uint8_t in_comment:1;
 
     READER_CONTEXT *reader_context;
-
-    // context to maintain state between continuation calls to various methods
     void *put_missing_context;
     void *pprint_context;
 } READER;
 
 ENVIRONMENT *environment_new(BISTACK *bs);
 READER *reader_new(ENVIRONMENT *e);
+READER *reader_init(READER *reader);
 char reader_consume_comment(READER *reader);
 char reader_read(READER *reader);
 char reader_pprint(READER *reader);
@@ -103,25 +102,25 @@ static inline char reader_peekc(READER *r) {
     }
 }
 
-static inline void reader_set_getc(READER *r, char (*getc)(void *), void *getc_streamobj) {
+static inline void reader_set_getc(
+        READER *r,
+        char (*getc)(void *),
+        void *getc_streamobj) {
     r->getc = getc;
     r->getc_streamobj = getc_streamobj;
 }
 
-static inline void reader_set_putc(READER *r, char (*putc)(void *, char), void *putc_streamobj) {
+static inline void reader_set_putc(
+        READER *r,
+        char (*putc)(void *, char),
+        void *putc_streamobj) {
     r->putc = putc;
     r->putc_streamobj = putc_streamobj;
 }
 
 
-static inline void reader_putc(READER *r, char c) {
-  r->putc(r->putc_streamobj, c);
-}
-
-static inline void reader_putstr(READER *r, char *str) {
-    while (*str) {
-        r->putc(r->putc_streamobj, *str++);
-    }
+static inline char reader_putc(READER *r, char c) {
+    return r->putc(r->putc_streamobj, c);
 }
 
 static inline char is_whitespace(char c) {

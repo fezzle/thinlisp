@@ -77,8 +77,11 @@ reader_test: $(patsubst %,%.c,$(READER_PARTS)) $(patsubst %,%.h,$(READER_PARTS))
 run_reader_test:
 	./bin/reader_test
 
+reader: $(patsubst %,%.c,$(READER_PARTS)) $(patsubst %,%.h,$(READER_PARTS))
+	$(CC) $(CFLAGS) -g $(filter %.c,$^) -DREADER_MAIN -o bin/$@
+
 nvmem_test: $(patsubst %,%.c,$(NVMEM_PARTS)) $(patsubst %,%.h,$(NVMEM_PARTS))
-	$(CC) $(CFLAGS) -g $(filter %.c,$^) -DNVMEM_TEST -o $@ && ./$@ && rm $@
+	$(CC) $(CFLAGS) -g $(filter %.c,$^) -DNVMEM_TEST -o bin/$@
 
 avl_test: $(patsubst %,%.c,$(AVL_SOURCES)) $(patsubst %,%.h,$(AVL_SOURCES))
 	$(CC) $(CLFAGS) -g $(patsubst %,%.c,$(AVL_SOURCES)) -DAVL_TEST -o bin/$@

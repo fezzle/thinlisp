@@ -14,7 +14,7 @@ char result_of_sample2_lisp[];
 typedef char *(*TEST_FN)(char *, char *);
 
 char* memory_check(char *got, char *expected) {
-    // Compares arrays a and b until two zeros are found or 64k, 
+    // Compares arrays a and b until two zeros are found or 64k,
     // returns TRUE if same
     static char message[1024];
     int i;
@@ -29,11 +29,11 @@ char* memory_check(char *got, char *expected) {
     for (i=0; i<bytes_to_compare; i++) {
         if (got[i] != expected[i]) {
             snprintf(
-                message, 
-                sizeof(message)-1, 
+                message,
+                sizeof(message)-1,
                 "byte:%03d expected[0x%02x] got[0x%02x]\n",
-                i, 
-                expected[i], 
+                i,
+                expected[i],
                 got[i]);
             message[sizeof(message)-1] = '\0';
             return message;
@@ -41,7 +41,7 @@ char* memory_check(char *got, char *expected) {
     }
     return NULL;
 }
-    
+
 /**
  * A structure which contains a FILE and flags to alter the behaviour of
  * mygetc
@@ -52,83 +52,83 @@ struct file_with_eof_flag {
 };
 
 char mygetc(void *streamobj_void) {
-  struct file_with_eof_flag *streamobj = (
-    struct file_with_eof_flag*)streamobj_void;
-  if (streamobj->characters_to_read == 0) {
-    return -1;
-  }
-  if (streamobj->characters_to_read > 0) {
-    streamobj->characters_to_read--;
-  }
-  int c = fgetc(streamobj->file);
-  if (c == EOF) {
-    return -1;
-  } else {
-    return (char)c;
+    struct file_with_eof_flag *streamobj = (
+        struct file_with_eof_flag*)streamobj_void;
+    if (streamobj->characters_to_read == 0) {
+        return -1;
+    }
+    if (streamobj->characters_to_read > 0) {
+        streamobj->characters_to_read--;
+    }
+    int c = fgetc(streamobj->file);
+    if (c == EOF) {
+        return -1;
+    } else {
+        return (char)c;
   }
 }
 
 char myputc(void *streamobj, char c) {
-  static char lastchar = 0;
-  if (lastchar == '\n') {
-    printf("***   ");
-  }
-  printf("%c", c);
-  fflush(stdout);
-  lastchar = c;
-  return c;
+    static char lastchar = 0;
+    if (lastchar == '\n') {
+        printf("***   ");
+    }
+    printf("%c", c);
+    fflush(stdout);
+    lastchar = c;
+    return c;
 }
 
 /**
  * Verifies reader_read does not crash
  */
 static char * test_reader_result(
-    char *test_lisp_file, char *expected_output) {
-  struct file_with_eof_flag streamobj;
-  streamobj.file = fopen(test_lisp_file, "rb");
-  streamobj.characters_to_read = -1;
+        char *test_lisp_file, char *expected_output) {
+    struct file_with_eof_flag streamobj;
+    streamobj.file = fopen(test_lisp_file, "rb");
+    streamobj.characters_to_read = -1;
 
-  BISTACK *bs = bistack_new(1<<18);
-  bistack_pushdir(bs, BS_BACKWARD);
-  ENVIRONMENT *environment = environment_new(bs);
-  READER *reader = reader_new(environment);
-  reader_set_getc(reader, mygetc, &streamobj);
-  while (!feof(streamobj.file)) {
-    bool res = reader_read(reader);
-    mu_assert("reader should complete", res);
-  }
-  mu_assert("root cell type should be list",
-    reader->reader_context->cellheader->List.type == AST_LIST);
-  char *memory_check_res = memory_check(
-        (char*)reader->reader_context->cellheader, expected_output);
-  mu_assert(memory_check_res, memory_check_res == NULL);
-  return 0;
+    BISTACK *bs = bistack_new(1<<18);
+    bistack_pushdir(bs, BS_BACKWARD);
+    ENVIRONMENT *environment = environment_new(bs);
+    READER *reader = reader_new(environment);
+    reader_set_getc(reader, mygetc, &streamobj);
+    while (!feof(streamobj.file)) {
+        bool res = reader_read(reader);
+        mu_assert("reader should complete", res);
+    }
+    mu_assert("root cell type should be list",
+        reader->reader_context->cellheader->List.type == AST_LIST);
+    char *memory_check_res = memory_check(
+            (char*)reader->reader_context->cellheader, expected_output);
+    mu_assert(memory_check_res, memory_check_res == NULL);
+    return 0;
 }
 
 /**
  * Verifies reader_pprint can be invoked successfully.
  */
 static char * test_reader_pprint(
-    char *test_lisp_file, char *expected_output) {
-  struct file_with_eof_flag streamobj;
-  streamobj.file = fopen(test_lisp_file, "rb");
-  streamobj.characters_to_read = -1;
+        char *test_lisp_file, char *expected_output) {
+    struct file_with_eof_flag streamobj;
+    streamobj.file = fopen(test_lisp_file, "rb");
+    streamobj.characters_to_read = -1;
 
-  BISTACK *bs = bistack_new(1<<18);
-  bistack_pushdir(bs, BS_BACKWARD);
-  ENVIRONMENT *environment = environment_new(bs);
-  READER *reader = reader_new(environment);
-  reader_set_getc(reader, mygetc, &streamobj);
-  reader_set_putc(reader, myputc, NULL);
-  while (!feof(streamobj.file)) {
-    bool res = reader_read(reader);
-    mu_assert("reader should complete", res);
-  }
-  reader_pprint(reader);
-  mu_assert(
-    "root cell type should be list",
-    reader->reader_context->cellheader->List.type == AST_LIST);
-  return 0;
+    BISTACK *bs = bistack_new(1<<18);
+    bistack_pushdir(bs, BS_BACKWARD);
+    ENVIRONMENT *environment = environment_new(bs);
+    READER *reader = reader_new(environment);
+    reader_set_getc(reader, mygetc, &streamobj);
+    reader_set_putc(reader, myputc, NULL);
+    while (!feof(streamobj.file)) {
+        bool res = reader_read(reader);
+        mu_assert("reader should complete", res);
+    }
+    reader_pprint(reader);
+    mu_assert(
+        "root cell type should be list",
+        reader->reader_context->cellheader->List.type == AST_LIST);
+    return 0;
 }
 
 
@@ -170,11 +170,11 @@ static char *batch_tests() {
         char *expected_result;
     } testdata[] = {
         {
-            .test_lisp_file="tests/samples/sample1.lisp", 
+            .test_lisp_file="tests/samples/sample1.lisp",
             .expected_result=result_of_sample1_lisp
         },
         {
-            .test_lisp_file="tests/samples/sample2.lisp", 
+            .test_lisp_file="tests/samples/sample2.lisp",
             .expected_result=result_of_sample2_lisp
         },
     };
@@ -184,15 +184,15 @@ static char *batch_tests() {
         char *fnname;
     } testfns[] = {
         {
-            .testfn=test_reader_result, 
+            .testfn=test_reader_result,
             .fnname="test_reader_result"
         },
         {
-            .testfn=test_reader_pprint, 
+            .testfn=test_reader_pprint,
             .fnname="test_reader_pprint"
         },
         {
-            .testfn=test_reader_start_stop, 
+            .testfn=test_reader_start_stop,
             .fnname="test_reader_start_stop"
         },
     };
@@ -206,14 +206,14 @@ static char *batch_tests() {
                 testfn_i++) {
             printf("Running %s: ", testfns[testfn_i].fnname);
             message = testfns[testfn_i].testfn(
-                testdata[testdata_i].test_lisp_file, 
+                testdata[testdata_i].test_lisp_file,
                 testdata[testdata_i].expected_result);
             tests_run++;
             if (message) {
                 printf("FAILED\n");
-                snprintf(fullmessage, 
+                snprintf(fullmessage,
                   sizeof(fullmessage)-1,
-                  "%s-%s: %s", 
+                  "%s-%s: %s",
                   testdata[testdata_i].test_lisp_file,
                   testfns[testfn_i].fnname,
                   message);
@@ -229,26 +229,26 @@ static char *batch_tests() {
 
 
 static char *sanity_tests() {
-  tests_run++;
-  mu_assert("sizeof AST_TYPE not 1", sizeof(AST_TYPE) == 1);
-  mu_assert("sizeof CELLHEADER not 2", sizeof(CELLHEADER) == 2);
-  return 0;
+    tests_run++;
+    mu_assert("sizeof AST_TYPE not 1", sizeof(AST_TYPE) == 1);
+    mu_assert("sizeof CELLHEADER not 2", sizeof(CELLHEADER) == 2);
+    return 0;
 }
 
 int main(int argc, char **argv) {
-  char *result = 0;
-  if (!result) result = sanity_tests();
-  if (!result) result = batch_tests();
+    char *result = 0;
+    if (!result) result = sanity_tests();
+    if (!result) result = batch_tests();
 
-  if (result != 0) {
-      printf("%s\n", result);
-  }
-  else {
-      printf("ALL TESTS PASSED\n");
-  }
-  printf("Tests run: %d\n", tests_run);
+    if (result != 0) {
+        printf("%s\n", result);
+    }
+    else {
+        printf("ALL TESTS PASSED\n");
+    }
+    printf("Tests run: %d\n", tests_run);
 
-  return !!result;
+    return !!result;
 }
 
 /* results of reading smaple.lisp with some extra zeros at the end */

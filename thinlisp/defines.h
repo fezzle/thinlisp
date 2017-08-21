@@ -35,7 +35,7 @@ typedef char bool;
 
 enum {
   AST_NOPREFIX=0,
-  AST_COMMA, 
+  AST_COMMA,
   AST_AT,
   AST_COMMA_AT,
   AST_HASH_QUOTE,
@@ -54,19 +54,19 @@ enum {
   ( \
     (X) == AST_COMMA ? ',' : \
     (X) == AST_AT ? '@' : \
-    (X) == AST_COMMA_AT ? ',' :	\
+    (X) == AST_COMMA_AT ? ',' : \
     (X) == AST_HASH_QUOTE ? '#' : \
     (X) == AST_HASH ? '#' : \
-    (X) == AST_QUOTE ? '\'' :	\
-    (X) == AST_QUOTE_HASH ? '\'') : \
+    (X) == AST_QUOTE ? '\'' : \
+    (X) == AST_QUOTE_HASH ? '\'' : \
     (X) == AST_QUASIQUOTE ? '`' : \
-    (X) == AST_COMMA ? ',' :	\
+    (X) == AST_COMMA ? ',' : \
     (X) == AST_PLUS ? '+' : \
     (X) == AST_MINUS ? '-' : \
     (X) == AST_DOUBLEQUOTE ? '"' : \
     '\0' \
   )
-   
+
 #define AST_PREFIX_CHAR2(X) \
   ( \
     (X) == AST_COMMA_AT ? '@' :	\
@@ -74,8 +74,8 @@ enum {
     (X) == AST_QUOTE_HASH ? '#' : \
     '\0' \
   )
-   
-  
+
+
 #define AST_POSTFIX_CHAR(X) \
   ((X) == AST_DOUBLEQUOTE ? '"' : '\0')
 

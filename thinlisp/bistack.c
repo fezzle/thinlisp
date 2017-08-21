@@ -127,26 +127,30 @@ void *bistack_rewindb(BISTACK *bs) {
   return bs->backwardptr;
 }
 
-void bistack_dropmark(BISTACK *bs) {
+void *bistack_dropmark(BISTACK *bs) {
   if ((bs->direction_stack & 1) == BS_FORWARD) {
     return bistack_dropmarkf(bs);
   } else {
     return bistack_dropmarkb(bs);
   }
 }
-void bistack_dropmarkf(BISTACK *bs) {
+void *bistack_dropmarkf(BISTACK *bs) {
   lassert(
     bs->forwardmark != NULL && *bs->forwardmark != NULL,
     BISTACK_DROPMARK_TOO_FAR);
+  void *mark = bs->forwardmark;
   bs->forwardmark = *bs->forwardmark;
   BS_DEBUG("bistack_dropmarkf @ forwardptr: 0x%08x\n", (int)bs->forwardptr);
+  return mark;
 }
-void bistack_dropmarkb(BISTACK *bs) {
+void *bistack_dropmarkb(BISTACK *bs) {
   lassert(
     bs->backwardmark != NULL && *bs->backwardmark != NULL,
     BISTACK_DROPMARK_TOO_FAR);
+  void *mark = bs->backwardmark;
   bs->backwardmark = *bs->backwardmark;
   BS_DEBUG("bistack_dropmarkb @ backwardptr: 0x%08x\n", (int)bs->backwardptr);
+  return mark;
 }
 
 

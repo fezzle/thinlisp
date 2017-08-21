@@ -47,9 +47,9 @@ void *bistack_rewindb(BISTACK *bs);
 
 void bistack_zero(BISTACK *bs);
 
-void bistack_dropmark(BISTACK *bs);
-void bistack_dropmarkf(BISTACK *bs);
-void bistack_dropmarkb(BISTACK *bs);
+void *bistack_dropmark(BISTACK *bs);
+void *bistack_dropmarkf(BISTACK *bs);
+void *bistack_dropmarkb(BISTACK *bs);
 
 static inline void bistack_pushdir(BISTACK *bs, unsigned char dir) {
   assert((bs->direction_stack & 0x80) == 0);
