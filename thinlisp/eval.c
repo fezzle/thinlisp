@@ -1,43 +1,43 @@
-
-
-/* huffman like encoding of AST elements:
- * 0b1..... a 15-bit signed integer
- * 0b01.... a string/symbol
- * 0b00.... a list
- */
-#define RDR_IS_INTEGER(X) ((uint16_t)(X) & (0x8000))
-#define RDR_IS_SYMBOL(X) (((uint16_t)(X) & (0xC000)) == 0x4000)
-#define RDR_IS_LIST(X) (((uint16_t)(X) & (0xC0000)) == 0)
-
-#define STRING_QUALIFIERS_MASK (0x2000)
-#define STRING_IS_QUOTED(X) ((X) & 0x2000)
-#define STRING_SET_QUOTED(X) ((X) | 0x2000)
-
-#define LIST_QUALIFIERS_MASK (0x2000)
-#define LIST_IS_QUOTED(X) ((X) & (0x2000))
-
 #include "defines.h"
+#include "environment.h"
+#include "runtime.h"
 
-int16_t rdr_make_integer(int16_t n) {
-  if ((int16_t)n < -BIT14) {
-    return BIT15 | -1;
-  } else if ((int16_t)n >= BIT14) {
-    return BIT15 | (BIT14 - 1);
-  } else {
-    return BIT15 | n;
+
+CELLHEADER *evaluate(CELLHEADER *cell, ENVIRONMENT *env) {
+  if (cell->Symbol.type == AST_SYMBOL) {
+    if (cell->Symbol.prefix == AST_QUOTE) {
+      return cell;
+    } else {
+      CELLHEADER *value = env_find_symbol(&cell->Symbol);
+      lassert(value != NULL, RUNTIME_SYMBOL_IS_UNBOUND);
+      return value;
+    }
+
+  } else if (cell->Integer.type == AST_INTEGER) {
+    return cell;
+
+  } else if (cell->List.type == AST_LIST) {
+    if (cell->List.prefix == AST_QUOTE) {
+      return cell;
+    } else if (cell->List.length == 0) {
+      return cell;
+    } else {
+      CELLHEADER *method = &((CELL*)cell)->cells[0];
+      CELLHEADER env_find_symbol();
+    }
   }
 }
 
-int16_t rdr_make_string(char *str, int len, int qualifiers) {
-  assert((qualifiers & ~STRING_QUALIFIERS_MASK) == 0);
-  return BIT14 | qualifiers | hashstr_13(str, len);
+void *add(CELLHEADER *list) {
+  int16_t value = 0;
+  CELLHEADER *cellitr = list;
+  if (list->List.length > 1) {
+    for (int i=0; i<list->List.length; i++) {
+      cellitr++;
+      cellitr->
+    }
+  }
 }
-
-int16_t rdr_make_list(int len, int qualifiers) {
-  assert((qualifiers & ~LIST_QUALIFIERS_MASK) == 0);
-  return qualifiers | len;
-}
-
 
 VALUE *new_value(HEAP *heap, int type, void *v_as_str) {
   VALUE *v = (VALUE*)heap_alloc(heap, sizeof(VALUE));

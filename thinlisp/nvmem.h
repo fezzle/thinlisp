@@ -74,6 +74,7 @@ char nvmem_itrnext(code_addr_t *addr, NVMEM_BLOCK *block);
  * @param[out] dest Pointer to destination of loaded data
  * @param[in] src Code address of source data
  * @param[in] len Number of bytes to load
+ */
 void nvmem_fetch(void *dest, code_addr_t src, const size_t len);
 
 /**

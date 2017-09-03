@@ -75,7 +75,6 @@ enum {
     '\0' \
   )
 
-
 #define AST_POSTFIX_CHAR(X) \
   ((X) == AST_DOUBLEQUOTE ? '"' : '\0')
 
@@ -93,29 +92,31 @@ typedef struct ast_type {
 #define CELL_SYMBOL_PREFIX_BITS 3
 #define CELL_SYMBOL_LENGTH_BITS 6
 
+typedef struct {
+  uint16_t type : 2;
+  uint16_t length : CELL_SYMBOL_LENGTH_BITS;
+  uint16_t prefix : CELL_SYMBOL_PREFIX_BITS;
+  uint16_t hash : 5;
+} SYMBOL;
+
+typedef struct {
+  uint16_t type : 2;
+  uint16_t sign : 1;
+  uint16_t value : 13;
+} INTEGER;
+
+typedef struct {
+  uint16_t type: 2;
+  uint16_t prefix : 4;
+  uint16_t length : 10;
+} LIST;
+
+
 typedef union {
   /* Symbol Type */
-  struct {
-    uint16_t type : 2;
-    uint16_t length : CELL_SYMBOL_LENGTH_BITS;
-    uint16_t prefix : CELL_SYMBOL_PREFIX_BITS;
-    uint16_t hash : 5;
-  } Symbol;
-
-  /* Integer type */
-  struct {
-    uint16_t type : 2;
-    uint16_t sign : 1;
-    uint16_t value : 13;
-  } Integer;
-
-  /* List Type */
-  struct {
-    uint16_t type: 2;
-    uint16_t prefix : 4;
-    uint16_t length : 10;
-  } List;
-
+  SYMBOL Symbol;
+  INTEGER Integer;
+  LIST List;
   struct {
     uint16_t type : 2;
     uint16_t rest : 14;
