@@ -5,6 +5,7 @@
 #include <setjmp.h>
 #include <stdio.h>
 #include <stdint.h>
+#include "defines.h"
 
 enum {
   BISTACK_OUT_OF_MEMORY=1,
@@ -20,12 +21,17 @@ enum {
   NVMEM_OUT_OF_MEMORY,
   NVMEM_ADDRESS_ERROR,
   RUNTIME_SYMBOL_IS_UNBOUND,
+  RUNTIME_INTEGER_EXPECTED,
+  RUNTIME_EQUAL_INSUFFICIENT_ARGUMENTS,
 };
 
 
 char *thrown_error_to_string(char err);
 
 extern jmp_buf __jmpbuff;
+
+extern CELLHEADER *CELL_FALSE;
+extern CELLHEADER *CELL_TRUE;
 
 void lerror(uint16_t exctype, char *err, ...);
 void lassert(uint16_t truefalse, uint16_t exctype, ...);

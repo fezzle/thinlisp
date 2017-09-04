@@ -1,0 +1,20 @@
+{
+    "files.associations": {
+        "reader.h": "c",
+        "defines.h": "c",
+        "string.h": "c",
+        "try2.h": "c",
+        "_stdio.h": "c",
+        "bistack.h": "c",
+        "minunit.h": "c",
+        "stdint.h": "c",
+        "builtins.h": "c",
+        "eeprom.h": "c",
+        "environment.h": "c",
+        "runtime.h": "c",
+        "list.h": "c"
+    },
+    "editor.tabSize": 4,
+    "editor.detectIndentation": false,
+    "editor.rulers": [80]
+}

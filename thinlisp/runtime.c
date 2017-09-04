@@ -19,6 +19,18 @@ void lassert(uint16_t truefalse, uint16_t exctype, ...) {
   }
 }
 
+
+CELLHEADER *CELL_FALSE = &(CELLHEADER){
+    .Integer.type = AST_INTEGER,
+    .Integer.value = FALSE,
+    .Integer.sign = 1,
+    };
+CELLHEADER *CELL_TRUE = &(CELLHEADER){
+    .Integer.type = AST_INTEGER,
+    .Integer.value = TRUE,
+    .Integer.sign = 1,
+    };
+
 char *thrown_error_to_string(char err) {
     switch(err) {
     case BISTACK_OUT_OF_MEMORY:

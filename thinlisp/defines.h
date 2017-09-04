@@ -22,7 +22,11 @@
 #define strncpy_P strncpy
 #endif
 
+#define MAX_LIST_SIZE 255
+#define MAX_STRING_SIZE 64
 
+typedef uint8_t list_size_t;
+typedef uint8_t string_size_t;
 typedef char bool;
 
 // low 2 bits of AST type are numeration
@@ -121,6 +125,7 @@ typedef union {
     uint16_t type : 2;
     uint16_t rest : 14;
   } Common;
+  uint16_t wholeheader;
 } CELLHEADER;
 
 typedef struct cell {
@@ -131,6 +136,27 @@ typedef struct cell {
   };
 } CELL;
 
+
+#define CELL_IS_INTEGER(X) ((X).Integer.type == AST_INTEGER)
+#define CELL_INTEGER_VAL(X) (\
+    (X).Integer.sign ? (X).Integer.value : -(X).Integer.value \
+    )
+#define CELL_IS_LIST(X) ((X).List.type == AST_LIST)
+#define CELL_LIST_LENGTH(X) ((X).List.length)
+#define CELL_IS_SYMBOL(X) ((X).Symbol.type == AST_SYMBOL)
+#define CELL_SYMBOL_LENGTH(X) ((X).Symbol.length)
+
+#define CELL_IS_TRUE(X) ( \
+    (CELL_IS_INTEGER(X) && CELL_INTEGER_VAL(X) != 0) || \
+    (CELL_IS_LIST(X) && CELL_LIST_LENGTH(X) > 0) || \
+    (CELL_IS_SYMBOL(X) && CELL_SYMBOL_LENGTH(X) > 0) \
+    )
+
+#define CELL_IS_FALSE(X) ( \
+    (CELL_IS_INTEGER(X) && CELL_INTEGER_VAL(X) == 0) || \
+    (CELL_IS_LIST(X) && CELL_LIST_LENGTH(X) == 0) || \
+    (CELL_IS_SYMBOL(X) && CELL_SYMBOL_LENGTH(X) == 0) \
+    )
 
 inline CELL *get_cell(CELLHEADER *cellheader) {
   return (CELL*)cellheader;
