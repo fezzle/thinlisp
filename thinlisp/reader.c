@@ -292,9 +292,7 @@ READER_CONTEXT *new_reader_context(AST_TYPE asttype, BISTACK *bs) {
         rc->list = bistack_alloc(bs, sizeof(READER_LIST_CONTEXT));
         rc->list->reader_context = NULL;
         rc->cellheader = bistack_allocf(bs, sizeof(CELLHEADER));
-        rc->cellheader->List.type = asttype.type;
-        rc->cellheader->List.prefix = asttype.prefix;
-        rc->cellheader->List.length = 0;
+        cell_list_init(rc->cellheader, asttype.prefix, FALSE, 0);
         break;
     case AST_SYMBOL:
         lassert(

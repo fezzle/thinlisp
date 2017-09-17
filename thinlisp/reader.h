@@ -10,6 +10,7 @@
 #include "list.h"
 #include "bistack.h"
 #include "runtime.h"
+#include "thinlisp.h"
 
 typedef struct reader READER;
 typedef struct reader_context READER_CONTEXT;
@@ -39,15 +40,6 @@ typedef struct reader_context {
 } READER_CONTEXT;
 
 
-typedef struct environment {
-    // total strlen of the non-global symbols
-    uint16_t total_symbols;
-    uint16_t total_strlen;
-    uint16_t total_astnodes;
-
-    BISTACK *bs;
-
-} ENVIRONMENT;
 
 typedef struct reader {
     ENVIRONMENT *environment;

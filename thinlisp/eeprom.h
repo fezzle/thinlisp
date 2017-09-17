@@ -16,43 +16,30 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-#define MAX_SYMBOL_CHARS 32
+#include "defines.h"
+#include "runtime.h"
+
 
 #define NOBLOCK_ADDR 0
 
+#define EEPROM_LOCK_TYPE_UNKNOWN (0)
+#define EEPROM_BLOCK_TYPE_LISP (1)
+
+
+typedef uint16_t eeprom_addr_t;
 
 typedef struct eeprom_block {
     uint16_t is_free:1;
-    uint16_t size;
-} eeprom_block;
-
-// values can be int, symbol, string, list
-// int-12bits
-typedef struct value {
     uint16_t type:2;
-    union {
-        uint16_t strlen:14;
-        uint16_t listlen:14;
-        uint16_t intval:14;
-        uint16_t symbol:14;
-    };
-} value;
-
-typedef struct symbol {
-    uint16_t symbol;
-    uint8_t strlen;
-    char symbolstr[0];
-} symbol;
+    uint16_t size:13;
+} EEPROM_BLOCK;
 
 
+#ifdef POSIX 
 size_t eeprom_get_size() {
     return 1024;
 }
 
-
-#ifdef ARDUINO
-
-#else
 int eeprom_open() {
     int fd = open("eeprom.bin", O_RDWR);
     if (fd == -1) {
@@ -75,7 +62,7 @@ int eeprom_open() {
 }
 
 
-void eeprom_read(size_t addr, void *buff, size_t n) {
+void eeprom_read(eeprom_addr_t addr, void *buff, size_t n) {
     int fd = eeprom_open();
     if ((lseek(fd, addr, SEEK_SET) != addr) || read(fd, buff, n) < n) {
         perror("unable to seek or read in eeprom");
@@ -84,7 +71,7 @@ void eeprom_read(size_t addr, void *buff, size_t n) {
     close(fd);
 }
 
-void eeprom_write(size_t addr, void *buff, size_t n) {
+void eeprom_write(eeprom_addr_t addr, void *buff, size_t n) {
     int fd = eeprom_open();
     if ((lseek(fd, addr, SEEK_SET) != addr) || write(fd, buff, n) < n) {
         perror("unable to write in eeprom");
@@ -93,13 +80,13 @@ void eeprom_write(size_t addr, void *buff, size_t n) {
     close(fd);
 }
 
-void eeprom_free(size_t addr) {
-    size_t end_of_eeprom = eeprom_get_size() - sizeof(eeprom_block);
+void eeprom_free(eeprom_addr_t addr) {
+    size_t end_of_eeprom = eeprom_get_size() - sizeof(EEPROM_BLOCK);
     size_t pos = 0;
     while (pos < end_of_eeprom) {
-        eeprom_block fb;
+        EEPROM_BLOCK fb;
         eeprom_read(pos, &fb, sizeof(fb));
-        if (pos + sizeof(eeprom_block) == addr) {
+        if (pos + sizeof(EEPROM_BLOCK) == addr) {
             fb.is_free = 1;
             eeprom_write(pos, &fb, sizeof(fb));
             pos += sizeof(fb);
@@ -114,11 +101,11 @@ void eeprom_free(size_t addr) {
     }
 }
 
-size_t eeprom_alloc(size_t size) {
-    size_t end_of_eeprom = eeprom_get_size() - sizeof(eeprom_block);
-    size_t pos = 0;
+eeprom_addr_t eeprom_alloc(size_t size) {
+    eeprom_addr_t end_of_eeprom = eeprom_get_size() - sizeof(EEPROM_BLOCK);
+    eeprom_addr_t pos = 0;
     while (pos < end_of_eeprom) {
-        eeprom_block fb;
+        EEPROM_BLOCK fb;
         eeprom_read(pos, &fb, sizeof(fb));
         if (fb.is_free && fb.size >= size + sizeof(fb) + sizeof(fb)) {
             // confirm nothing has written to space
@@ -143,26 +130,52 @@ size_t eeprom_alloc(size_t size) {
     return NOBLOCK_ADDR;
 }
 
+#else
 
-typedef struct symboladdr {
-    uint16_t symbol;
-    uint16_t address;
-} symboladdr;
+#define MAGIC_BLOCK_ADDRESS (0)
+#define MAGIC_WORD_ADDRESS (MAGIC_BLOCK_ADDRESS + sizeof(EEPROM_BLOCK))
+#define MAGIC_WORD_SIZE 4
+#define MAGIC_WORD "lisp"
 
-
-size_t add_symbol(symbol s) {
-    size_t addr = 0;
-    symboladdr symaddr;
-    while (1) {
-        eeprom_read(addr, &symaddr, sizeof(symaddr));
-        if (symaddr.symbol == s.symbol) {
-            return symaddr.address;
-        }
-    }
-    return 0;
+size_t eeprom_get_size() {
+    return 1024//EEPROM.length();
 }
 
+bool eeprom_magic_word(eeprom_addr_t address, bool initialize) {
+    /**
+     * If `initialize` is true, the magic word is written to eeprom `address`.
+     * If `initialize` is false, the magic word is compared to eeprom `address`
+     *  with true being returned if equal.
+     */
+    char *magic_word = PSTR(MAGIC_WORD);
+    for (char i = 0; i < MAGIC_WORD_SIZE; i++) {
+        if (initialize) {
+            EEPROM.write(address++, PGM_READ_BYTE(magic_word++));
+        } else {
+            if (EEPROM.read(address++) != PGM_READ_BYTE(magic_word++)) {
+                return FALSE;
+            }
+        }
+    }
+    return TRUE;
+}
 
+void eeprom_initialize() {
+    EEPROM_BLOCK block = {
+        .is_free = 0,
+        .type = EEPROM_BLOCK_TYPE_UNKNOWN,
+        .size = 4,
+    };
+    EEPROM.write(MAGIC_BLOCK_ADDRESS, (uint8_t*)&block);
+    EEPROM.write(MAGIC_BLOCK_ADDRESS + 1, ((uint8_t*)&block) + 1);
+    eeprom_magic_word(MAGIC_WORD_ADDRSS, true));
+}
+
+int eeprom_open() {
+    if (!eeprom_magic_word(MAGIC_WORD_ADDRESS, false)) {
+        eeprom_initialize();
+    }
+}
 #endif
 
 

@@ -51,6 +51,14 @@ void *bistack_dropmark(BISTACK *bs);
 void *bistack_dropmarkf(BISTACK *bs);
 void *bistack_dropmarkb(BISTACK *bs);
 
+inline void *bistack_push(BISTACK *bs, uint16_t size) {
+    return bistack_allocf(bs, size);
+}
+
+inline void *bistack_heapalloc(BISTACK *bs, uint16_t size) {
+    return bistack_allocb(bs, size);
+}
+
 static inline void bistack_pushdir(BISTACK *bs, unsigned char dir) {
   assert((bs->direction_stack & 0x80) == 0);
   bs->direction_stack <<= 1;

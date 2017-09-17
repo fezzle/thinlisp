@@ -2,9 +2,7 @@
 #include <stdlib.h>
 
 int main() {
-  char *str1 = "asdfasdfasdf";
+  char *str1 = "\0b011001100\x6c";
   char *str2 = "kjhsadfadfalkdf";
-  printf("0x%08x\n", str1 || str2);
-
-
+  printf("%s", str1);
 }

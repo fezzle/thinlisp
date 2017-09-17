@@ -5,6 +5,7 @@
 #include <setjmp.h>
 #include <stdio.h>
 #include <stdint.h>
+
 #include "defines.h"
 
 enum {
@@ -23,6 +24,10 @@ enum {
   RUNTIME_SYMBOL_IS_UNBOUND,
   RUNTIME_INTEGER_EXPECTED,
   RUNTIME_EQUAL_INSUFFICIENT_ARGUMENTS,
+  RUNTIME_SYMBOL_EXPECTED,
+  RUNTIME_LIST_EXPECTED,
+  RUNTIME_TWO_ARGUMENTS_EXPECTED,
+  EEPROM_BINDING_NOT_SYMBOL,
 };
 
 
@@ -35,5 +40,6 @@ extern CELLHEADER *CELL_TRUE;
 
 void lerror(uint16_t exctype, char *err, ...);
 void lassert(uint16_t truefalse, uint16_t exctype, ...);
+void dassert(uint16_t truefalse, uint16_t exctype, ...);
 
 #endif

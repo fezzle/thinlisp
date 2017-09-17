@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdint.h>
 
+#define DEBUG 1
+
 #ifndef TRUE
 #define TRUE 1
 #endif
@@ -16,10 +18,43 @@
 #define POSIX
 #endif
 
+
+#define EEPROM_ADDR_TO_PTR(X) ((uint8_t*)X)
+#define NVMEM_ADDR_TO_PTR(X) ((uint8_t*)X)
+
 #ifndef PSTR
+// not Harvard architecture
+#define PGM_START_PTR ((void*)0)
+
 #define PSTR(X) ((char*)(X))
 #define strncmp_P strncmp
 #define strncpy_P strncpy
+
+#define IS_PGM_PTR(X) (TRUE)
+#define IS_NVMEM_PTR(X) (FALSE)
+#define SYMBOL_HASH(X) (FALSE)
+
+#define PGM_READ_BYTE(X) (*((uint8_t*)X))
+#define NVMEM_READ_BYTE(X) (*((uint8_t*)X))
+#define DEREF(X) (\
+    IS_PGM_PTR(X) ? PGM_READ_BYTE(X) : \
+    IS_NVMEM_PTR(X) ? NVMEM_READ_BYTE(X) : \
+    *(uint8_t*)X)
+#else
+
+// Havard arch
+#define PGM_START_PTR ((void*)100000)
+
+#define IS_PGM_PTR(X) ((X) >= PGM_START_PTR)
+#define IS_NVMEM_PTR(X) (FALSE)
+
+#define PGM_READ_BYTE(X) (pgm_read_byte(X))
+#define NVMEM_READ_BYTE(X) (nvmem_read(X))
+#define DEREF(X) (\
+    IS_PGM_PTR(X) ? PGM_READ_BYTE(X) : \
+    IS_NVMEM_PTR(X) ? NVMEM_READ_BYTE(X) : \
+    (*(uint8_t*)X))
+
 #endif
 
 #define MAX_LIST_SIZE 255
@@ -27,140 +62,11 @@
 
 typedef uint8_t list_size_t;
 typedef uint8_t string_size_t;
+typedef uint8_t symbol_size_t;
+typedef uint8_t string_hash_t;
 typedef char bool;
 
-// low 2 bits of AST type are numeration
-// high 6 bits are bitfield
-#define AST_NONE  0
-#define AST_SYMBOL 1
-#define AST_INTEGER 2
-#define AST_LIST 3
-#define AST_STRING 4
 
-enum {
-  AST_NOPREFIX=0,
-  AST_COMMA,
-  AST_AT,
-  AST_COMMA_AT,
-  AST_HASH_QUOTE,
-  AST_HASH,
-  AST_QUOTE,
-  AST_DOUBLEQUOTE,
-  AST_QUOTE_HASH,
-  AST_QUASIQUOTE,
-  AST_PLUS,
-  AST_MINUS,
-};
-
-#define AST_SINGLEQUOTE AST_QUOTE
-
-#define AST_PREFIX_CHAR1(X) \
-  ( \
-    (X) == AST_COMMA ? ',' : \
-    (X) == AST_AT ? '@' : \
-    (X) == AST_COMMA_AT ? ',' : \
-    (X) == AST_HASH_QUOTE ? '#' : \
-    (X) == AST_HASH ? '#' : \
-    (X) == AST_QUOTE ? '\'' : \
-    (X) == AST_QUOTE_HASH ? '\'' : \
-    (X) == AST_QUASIQUOTE ? '`' : \
-    (X) == AST_COMMA ? ',' : \
-    (X) == AST_PLUS ? '+' : \
-    (X) == AST_MINUS ? '-' : \
-    (X) == AST_DOUBLEQUOTE ? '"' : \
-    '\0' \
-  )
-
-#define AST_PREFIX_CHAR2(X) \
-  ( \
-    (X) == AST_COMMA_AT ? '@' :	\
-    (X) == AST_HASH_QUOTE ? '\'' : \
-    (X) == AST_QUOTE_HASH ? '#' : \
-    '\0' \
-  )
-
-#define AST_POSTFIX_CHAR(X) \
-  ((X) == AST_DOUBLEQUOTE ? '"' : '\0')
-
-typedef struct ast_type {
-  union {
-    struct {
-      uint8_t type : 2;
-      uint8_t prefix : 4;
-      uint8_t terminator : 1;
-     };
-     uint8_t bitfield;
-  };
-} AST_TYPE;
-
-#define CELL_SYMBOL_PREFIX_BITS 3
-#define CELL_SYMBOL_LENGTH_BITS 6
-
-typedef struct {
-  uint16_t type : 2;
-  uint16_t length : CELL_SYMBOL_LENGTH_BITS;
-  uint16_t prefix : CELL_SYMBOL_PREFIX_BITS;
-  uint16_t hash : 5;
-} SYMBOL;
-
-typedef struct {
-  uint16_t type : 2;
-  uint16_t sign : 1;
-  uint16_t value : 13;
-} INTEGER;
-
-typedef struct {
-  uint16_t type: 2;
-  uint16_t prefix : 4;
-  uint16_t length : 10;
-} LIST;
-
-
-typedef union {
-  /* Symbol Type */
-  SYMBOL Symbol;
-  INTEGER Integer;
-  LIST List;
-  struct {
-    uint16_t type : 2;
-    uint16_t rest : 14;
-  } Common;
-  uint16_t wholeheader;
-} CELLHEADER;
-
-typedef struct cell {
-  CELLHEADER header;
-  union {
-    char string[0];
-    CELLHEADER cells[0];
-  };
-} CELL;
-
-
-#define CELL_IS_INTEGER(X) ((X).Integer.type == AST_INTEGER)
-#define CELL_INTEGER_VAL(X) (\
-    (X).Integer.sign ? (X).Integer.value : -(X).Integer.value \
-    )
-#define CELL_IS_LIST(X) ((X).List.type == AST_LIST)
-#define CELL_LIST_LENGTH(X) ((X).List.length)
-#define CELL_IS_SYMBOL(X) ((X).Symbol.type == AST_SYMBOL)
-#define CELL_SYMBOL_LENGTH(X) ((X).Symbol.length)
-
-#define CELL_IS_TRUE(X) ( \
-    (CELL_IS_INTEGER(X) && CELL_INTEGER_VAL(X) != 0) || \
-    (CELL_IS_LIST(X) && CELL_LIST_LENGTH(X) > 0) || \
-    (CELL_IS_SYMBOL(X) && CELL_SYMBOL_LENGTH(X) > 0) \
-    )
-
-#define CELL_IS_FALSE(X) ( \
-    (CELL_IS_INTEGER(X) && CELL_INTEGER_VAL(X) == 0) || \
-    (CELL_IS_LIST(X) && CELL_LIST_LENGTH(X) == 0) || \
-    (CELL_IS_SYMBOL(X) && CELL_SYMBOL_LENGTH(X) == 0) \
-    )
-
-inline CELL *get_cell(CELLHEADER *cellheader) {
-  return (CELL*)cellheader;
-}
 
 
 

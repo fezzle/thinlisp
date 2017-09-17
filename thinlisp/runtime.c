@@ -14,9 +14,17 @@ void lerror(uint16_t exctype, char *err, ...) {
 }
 
 void lassert(uint16_t truefalse, uint16_t exctype, ...) {
-  if (!truefalse) {
-    lerror(exctype, PSTR("ASSERTION FAILED"));
-  }
+    if (!truefalse) {
+        lerror(exctype, PSTR("ASSERTION FAILED"));
+    }
+}
+
+void dassert(uint16_t truefalse, uint16_t exctype, ...) {
+#ifdef DEBUG
+    if (!truefalse) {
+        lerror(exctype, PSTR("DEBUG ASSERTION FAILED"));
+    }   
+#endif
 }
 
 

@@ -4,6 +4,8 @@
 #include "defines.h"
 #include "bistack.h"
 #include "nvmem.h"
+#include "cell.h"
+
 
 typedef void *(*pointer_resolver)(BISTACK *, void *);
 
@@ -32,25 +34,27 @@ pointer_resolver get_resolver(void *ptr) {
   }
 }
 
-typedef struct symboltable_entry {
-  SYMBOL *symbol;
-  CELL *val;
-} SYMBOLTABLE_ENTRY;
 
-typedef struct symboltable {
-  SYMBOLTABLE_ENTRY *entries;
-} SYMBOLTABLE;
+typedef struct symbol_binding {
+    CELL *symbol_cell;
+    CELL *bound_cell;
+    struct symbol_binding *next;
+} SYMBOL_BINDING;
+
+
+typedef struct symbol_binding_frame {
+    SYMBOL_BINDING *symbol_binding;
+    struct symbol_binding_frame *next;  
+} SYMBOL_BINDING_FRAME;
+
 
 typedef struct environment {
-  BISTACK *bs;
-  char dir;
-  SYMBOLTABLE *builtins;
-  SYMBOLTABLE *globals;
-  SYMBOLTABLE *globals2;
-  SYMBOLTABLE *locals;
+    BISTACK *bs;
+    SYMBOL_BINDING_FRAME *frame;
 } ENVIRONMENT;
 
-CELLHEADER *env_find_symbol(SYMBOL *symbol) {
+
+CELL *env_find_symbol(CELL *symbol) {
   return NULL;
 }
 

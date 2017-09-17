@@ -1,20 +1,62 @@
-#include "avl.h"
 #include "bistack.h"
-#include "main.h"
-#include "utils.c"
+#include "utils.h"
+#include "cell.h"
+#include "eeprom.h"
 
-typedef struct symboltable {
-  AVL_NODE *avlnode;
-  // in some sense this is 'prev' as it's one symbol table higher in the env
-  struct symboltable *outer;
-} SYMBOLTABLE;
+#include "environment.h"
 
-typedef struct environment {
-  BISTACK *bs;
-  char dir;
-  SYMBOLTABLE *innerbindings;
-  SYMBOLTABLE *globalbindings;
-} ENVIRONMENT;
+
+
+CELL *frame_find_symbol(SYMBOL_BINDING_FRAME *frame, CELL *symbol_cell) {
+    SYMBOL_BINDING *start = frame->symbol_binding;
+    SYMBOL_BINDING *itr = start;
+    do {
+        if (
+        itr = itr->next;
+    } while (itr != start);
+}
+
+
+void frame_populate_from_eeprom(ENVIRONMENT *env) {
+    EEPROM_BLOCK itr;
+    eeprom_addr_t addr = 0;
+
+    while (addr < eeprom_get_size()) {
+    
+        eeprom_read(addr, &itr, sizeof(EEPROM_BLOCK));
+    
+        if (!itr.is_free && itr.type == EEPROM_BLOCK_TYPE_LISP) {
+            // load symbol cell
+            CELL *symbol_cell = bistack_heapalloc(env->bs, sizeof(CELL));
+            eeprom_read(addr + sizeof(EEPROM_BLOCK), symbol_cell, sizeof(CELL));
+
+            dassert(CELL_IS_SYMBOL(symbol_cell), EEPROM_BINDING_NOT_SYMBOL);
+            symbol_cell->header.Symbol.is_ptr = TRUE;
+            symbol_cell->string_ptr = (char*)EEPROM_ADDR_TO_PTR(
+                addr + sizeof(EEPROM_BLOCK) + sizeof(CELLHEADER));
+            
+            
+            addr += (
+                addr + sizeof(EEPROM_BLOCK) + sizeof(CELLHEADER) + 
+                CELL_SYMBOL_LENGTH(symbol_cell));
+
+            CELL *bound_cell = bistack_heapalloc(env->bs, sizeof(CELL));
+            eeprom_read(addr + sizeof(EEPROM_BLOCK), bound_cell, sizeof(CELL));
+
+            if (CELL_IS_LIST(*bound_cell)) {
+                bound_cell->header.List.is_ptr = TRUE;
+                bound_cell->cells_ptr = (CELL*)EEPROM_ADDR_TO_PTR(
+                    addr + sizeof(EEPROM_BLOCK) + sizeof(CELLHEADER));
+            
+            } else if (CELL_IS_SYMBOL(*bound_cell)) {
+                bound_cell->header.Symbol.is_ptr = TRUE;
+                symbol_cell->string_ptr = (char*)EEPROM_ADDR_TO_PTR(
+                    addr + sizeof(EEPROM_BLOCK) + sizeof(CELLHEADER));    
+            }
+        }
+    }
+}
+
 
 /**
  * Marks a gc point in the bistack and pushes a symbol table in the environment
@@ -32,6 +74,7 @@ SYMBOLTABLE *env_pushsymtable(ENVIRONMENT *env) {
   bistack_popdir(env->bs);
   return st;
 }
+
 
 /**
  * Removes the last symbol table from the environment and frees the last mark.

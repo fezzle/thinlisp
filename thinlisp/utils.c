@@ -37,6 +37,18 @@ uint8_t hashstr_8(char *str, int strlen) {
   return hash;
 }
 
+uint8_t hashstr_8_P(char *str, int strlen) {
+  // A NIBBLE based pearson hash
+  uint8_t hash = 0;
+  for (int i=0; i<strlen; i++) {
+    uint8_t newindex = hash + (uint8_t)PGM_READ_BYTE(str + i);
+    hash = (
+      (SHUFFLED_NIBBLE[newindex >> 4] << 4) + 
+      SHUFFLED_NIBBLE[newindex & 0xf]);
+  }
+  return hash;
+}
+
 
 inline char q16log2(uint16_t v) {
   /**
