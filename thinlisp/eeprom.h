@@ -25,7 +25,6 @@
 #define EEPROM_LOCK_TYPE_UNKNOWN (0)
 #define EEPROM_BLOCK_TYPE_LISP (1)
 
-
 typedef uint16_t eeprom_addr_t;
 
 typedef struct eeprom_block {
@@ -36,6 +35,8 @@ typedef struct eeprom_block {
 
 
 #ifdef POSIX 
+#define EEPROM_ADDR_TO_CHAR_PTR(A) ((char*)(A))
+
 size_t eeprom_get_size() {
     return 1024;
 }
@@ -45,7 +46,7 @@ int eeprom_open() {
     if (fd == -1) {
         if (errno == ENOENT) {
             // eeprom file does not exist, create and write freeblock to init
-            char *nullchar = { '\0' };
+            char *nullchar[] = { '\0' };
             fd = eeprom_open(O_CREAT | O_WRONLY);
             for (int i=0; i<eeprom_get_size(); i++) {
                 write(fd, nullchar, 1);

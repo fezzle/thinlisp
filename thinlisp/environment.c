@@ -8,21 +8,24 @@
 
 
 CELL *frame_find_symbol(SYMBOL_BINDING_FRAME *frame, CELL *symbol_cell) {
-    SYMBOL_BINDING *start = frame->symbol_binding;
-    SYMBOL_BINDING *itr = start;
-    do {
-        if (
-        itr = itr->next;
-    } while (itr != start);
+    SYMBOL_BINDING_FRAME *frame_itr = frame;
+    while (frame_itr) {
+        SYMBOL_BINDING *binding_itr = frame_itr->symbol_binding;
+        while (binding_itr) {
+            if (cell_symbol_compare(binding_itr->symbol_cell, symbol_cell)) {
+                return binding_itr->bound_cell;
+            } 
+            binding_itr = binding_itr->next;
+        }
+        frame_itr = frame_itr->next;
+    }
 }
 
 
-void frame_populate_from_eeprom(ENVIRONMENT *env) {
+void environment_boostrap_from_eeprom(ENVIRONMENT *env) {
     EEPROM_BLOCK itr;
     eeprom_addr_t addr = 0;
-
     while (addr < eeprom_get_size()) {
-    
         eeprom_read(addr, &itr, sizeof(EEPROM_BLOCK));
     
         if (!itr.is_free && itr.type == EEPROM_BLOCK_TYPE_LISP) {
@@ -30,15 +33,15 @@ void frame_populate_from_eeprom(ENVIRONMENT *env) {
             CELL *symbol_cell = bistack_heapalloc(env->bs, sizeof(CELL));
             eeprom_read(addr + sizeof(EEPROM_BLOCK), symbol_cell, sizeof(CELL));
 
-            dassert(CELL_IS_SYMBOL(symbol_cell), EEPROM_BINDING_NOT_SYMBOL);
+            dassert(CELL_IS_SYMBOL(*symbol_cell), EEPROM_BINDING_NOT_SYMBOL);
             symbol_cell->header.Symbol.is_ptr = TRUE;
-            symbol_cell->string_ptr = (char*)EEPROM_ADDR_TO_PTR(
+            symbol_cell->string_ptr = EEPROM_ADDR_TO_CHAR_PTR(
                 addr + sizeof(EEPROM_BLOCK) + sizeof(CELLHEADER));
             
             
             addr += (
                 addr + sizeof(EEPROM_BLOCK) + sizeof(CELLHEADER) + 
-                CELL_SYMBOL_LENGTH(symbol_cell));
+                CELL_SYMBOL_LENGTH(*symbol_cell));
 
             CELL *bound_cell = bistack_heapalloc(env->bs, sizeof(CELL));
             eeprom_read(addr + sizeof(EEPROM_BLOCK), bound_cell, sizeof(CELL));

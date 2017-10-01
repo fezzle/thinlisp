@@ -54,8 +54,30 @@
     IS_PGM_PTR(X) ? PGM_READ_BYTE(X) : \
     IS_NVMEM_PTR(X) ? NVMEM_READ_BYTE(X) : \
     (*(uint8_t*)X))
-
 #endif
+
+#define DEREF_SYMBOL(SYM_PTR, SYM_IMMEDIATE) (\
+    IS_PGM_PTR(SYM_PTR) ? \
+        ((uint8_t*)&SYM_IMMEDIATE)[0]=PGM_READ_BYTE((uint8_t*)SYM_PTR), \
+        ((uint8_t*)&SYM_IMMEDIATE)[1]=PGM_READ_BYTE((uint8_t*)(SYM_PTR+1)), \
+    : IS_NVMEM_PTR(SYMBOL_PTR) ? \
+        ((uint8_t*)&SYM_IMMEDIATE)[0]=NVMEM_READ_BYTE((uint8_t*)SYM_PTR), \
+        ((uint8_t*)&SYM_IMMEDIATE)[1]=NVMEM_READ_BYTE((uint8_t*)(SYM_PTR+1)), \
+    : ((uint8_t*)&SYM_IMMEDIATE)[0]=*(uint8_t*)(&SYM_PTR), \
+      ((uint8_t*)&SYM_IMMEDIATE)[1]=*
+
+void deref_symbol(SYMBOL *ptr, SYMBOL *immediate) {
+    if (IS_PGM_PTR(ptr)) {
+        ((uint8_t*)&immediate)[0] = PGM_READ_BYTE((uint8_t*)ptr + 0);
+        ((uint8_t*)&immediate)[1] = PGM_READ_BYTE((uint8_t*)ptr + 1);
+    } else if (IS_NVMEM_PTR(ptr)) {
+        ((uint8_t*)&immediate)[0] = NVMEM_READ_BYTE((uint8_t*)ptr + 0);
+        ((uint8_t*)&immediate)[1] = NVMEM_READ_BYTE((uint8_t*)ptr + 1);
+    } else {
+        ((uint8_t*)&immediate)[0] = (uint8_t*)ptr + 0;
+        ((uint8_t*)&immediate)[1] = (uint8_t*)ptr + 1;
+    }
+}
 
 #define MAX_LIST_SIZE 255
 #define MAX_STRING_SIZE 64

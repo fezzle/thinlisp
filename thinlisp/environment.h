@@ -22,8 +22,8 @@ void *mem_resolver(BISTACK *bs, void *thing) {
 }
 
 pointer_resolver get_resolver(void *ptr) {
-  const uintptr_t ptrint = (uintptr_t)ptr;
-  const char top_two_bits = ptrint >> ((sizeof(ptrint) << 3) - 2);
+  const uintptr_t ptr_int = (uintptr_t)ptr;
+  const char top_two_bits = ptr_int >> ((sizeof(ptr_int) << 3) - 2);
   if (top_two_bits >= 2) {
     // first bit in ptr is a 1, so its in CODE mem
     return codemem_resolver;
