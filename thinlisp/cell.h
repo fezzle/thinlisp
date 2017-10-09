@@ -63,7 +63,7 @@ enum {
 #define AST_POSTFIX_CHAR(X) \
   ((X) == AST_DOUBLEQUOTE ? '"' : '\0')
 
-  
+
 typedef struct ast_type {
   union {
     struct {
@@ -94,7 +94,7 @@ typedef struct {
 typedef struct {
   uint16_t type : 2;
   uint16_t sign : 1;
-  uint16_t value : 13;
+  uint16_t value_low : 13;
 } INTEGER;
 
 
@@ -111,7 +111,6 @@ typedef struct {
  * Contains the value for integer.
  */
 typedef union {
-  
   SYMBOL Symbol;
   INTEGER Integer;
   LIST List;
@@ -124,13 +123,14 @@ typedef union {
 
 
 typedef struct cell {
-  CELLHEADER header;
-  union {
-    char string[0];
-    char *string_ptr;
-    CELLHEADER cells[0];
-    CELLHEADER *cells_ptr;
-  };
+    CELLHEADER header;
+    union {
+        uint16_t value_low;
+        char string[0];
+        char *string_ptr;
+        CELLHEADER cells[0];
+        CELLHEADER *cells_ptr;
+    };
 } CELL;
 
 
@@ -146,7 +146,8 @@ typedef struct cell {
 
 #define CELL_IS_SYMBOL(X) ((X).header.Symbol.type == AST_SYMBOL)
 #define CELLHEADER_IS_SYMBOL(X) ((X).Symbol.type == AST_SYMBOL)
-#define CELL_SYMBOL_LENGTH(X) ((X).Symbol.length)
+#define CELL_SYMBOL_LENGTH(X) ((X).header.Symbol.length)
+#define CELLHEADER_SYMBOL_LENGTH(X) ((X).Symbol.length)
 
 #define CELL_IS_TRUE(X) ( \
     (CELL_IS_INTEGER(X) && CELL_INTEGER_VAL(X) != 0) || \
@@ -238,6 +239,20 @@ inline CELLHEADER *cell_list_get_cells(CELLHEADER *cellheader) {
     }
 }
 
+
+typedef char (*get_char_n_ptr)(void *, string_size_t);
+typedef struct string_function {
+    get_char_n_ptr get_char;
+    CELL *arg;
+} STRING_DEREF;
+
+char get_pgm_string(void *arg, string_size_t n) {
+    return PGM_READ_BYTE((char*)arg + n);
+}
+
+char compare(STRING_DEREF *a, STRING_DEREF *b) {
+
+}
 
 
 #endif

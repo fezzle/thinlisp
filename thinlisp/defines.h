@@ -22,6 +22,8 @@
 #define EEPROM_ADDR_TO_PTR(X) ((uint8_t*)X)
 #define NVMEM_ADDR_TO_PTR(X) ((uint8_t*)X)
 
+
+
 #ifndef PSTR
 // not Harvard architecture
 #define PGM_START_PTR ((void*)0)
@@ -64,9 +66,10 @@
         ((uint8_t*)&SYM_IMMEDIATE)[0]=NVMEM_READ_BYTE((uint8_t*)SYM_PTR), \
         ((uint8_t*)&SYM_IMMEDIATE)[1]=NVMEM_READ_BYTE((uint8_t*)(SYM_PTR+1)), \
     : ((uint8_t*)&SYM_IMMEDIATE)[0]=*(uint8_t*)(&SYM_PTR), \
-      ((uint8_t*)&SYM_IMMEDIATE)[1]=*
+      ((uint8_t*)&SYM_IMMEDIATE)[1]=* \
+)
 
-void deref_symbol(SYMBOL *ptr, SYMBOL *immediate) {
+void deref_symbol(void *ptr, void *immediate) {
     if (IS_PGM_PTR(ptr)) {
         ((uint8_t*)&immediate)[0] = PGM_READ_BYTE((uint8_t*)ptr + 0);
         ((uint8_t*)&immediate)[1] = PGM_READ_BYTE((uint8_t*)ptr + 1);
@@ -87,10 +90,6 @@ typedef uint8_t string_size_t;
 typedef uint8_t symbol_size_t;
 typedef uint8_t string_hash_t;
 typedef char bool;
-
-
-
-
 
 #define BREAKPOINT \
   { \

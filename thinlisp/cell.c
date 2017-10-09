@@ -2,16 +2,20 @@
 #include "cell.h"
 #include "runtime.h"
 
+void cell_load(CELL *target, CELL *cellref) {
+    
+}
+
 
 /**
  * @return 1 if a > b, -1 if a < b, 0 if equal
  */
  int8_t cell_symbol_compare(CELL *a, CELL *b) {
     dassert(
-        a->header.Symbol.type == AST_SYMBOL && 
+        a->header.Symbol.type == AST_SYMBOL &&
             b->header.Symbol.type == AST_SYMBOL,
-        RUNTIME_TWO_ARGUMENTS_EXPECTED);
-    
+        RUNTIME_TWO_SYMBOL_ARGUMENTS_EXPECTED);
+
     char *a_chars = a->header.Symbol.is_ptr ? a->string_ptr : a->string;
     char *b_chars = b->header.Symbol.is_ptr ? b->string_ptr : b->string;
 

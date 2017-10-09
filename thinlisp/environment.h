@@ -9,17 +9,21 @@
 
 typedef void *(*pointer_resolver)(BISTACK *, void *);
 
+
 void *codemem_resolver(BISTACK *bs, void *thing) {
   return NULL;
 }
+
 
 void *nvmem_resolver(BISTACK *bs, void *thing) {
   return NULL;
 }
 
+
 void *mem_resolver(BISTACK *bs, void *thing) {
   return NULL;
 }
+
 
 pointer_resolver get_resolver(void *ptr) {
   const uintptr_t ptr_int = (uintptr_t)ptr;
@@ -36,15 +40,15 @@ pointer_resolver get_resolver(void *ptr) {
 
 
 typedef struct symbol_binding {
-    CELL *symbol_cell;
-    CELL *bound_cell;
+    CELL symbol_cell;
+    CELL bound_cell;
     struct symbol_binding *next;
 } SYMBOL_BINDING;
 
 
 typedef struct symbol_binding_frame {
     SYMBOL_BINDING *symbol_binding;
-    struct symbol_binding_frame *next;  
+    struct symbol_binding_frame *next;
 } SYMBOL_BINDING_FRAME;
 
 
