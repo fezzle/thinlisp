@@ -14,7 +14,7 @@ CELL *frame_find_symbol(SYMBOL_BINDING_FRAME *frame, CELL *symbol_cell) {
         while (binding_itr) {
             if (cell_symbol_compare(binding_itr->symbol_cell, symbol_cell)) {
                 return binding_itr->bound_cell;
-            }
+            } 
             binding_itr = binding_itr->next;
         }
         frame_itr = frame_itr->next;
@@ -24,105 +24,29 @@ CELL *frame_find_symbol(SYMBOL_BINDING_FRAME *frame, CELL *symbol_cell) {
 
 void environment_boostrap_from_eeprom(ENVIRONMENT *env) {
     EEPROM_BLOCK itr;
-    eeprom_addr_t addr = 0;
-
-    while (addr < eeprom_get_size()) {
+    eeprom_addr_t addr = eeprom_get_start();
+    while (addr < eeprom_get_end()) {
         eeprom_read(addr, &itr, sizeof(EEPROM_BLOCK));
+    
         if (!itr.is_free && itr.type == EEPROM_BLOCK_TYPE_LISP) {
             // load symbol cell
-            SYMBOL_BINDING *symbol_binding = bistack_heapalloc(
-                env->bs, sizeof(SYMBOL_BINDING));
+            CELL *symbol_cell = bistack_heapalloc(env->bs, sizeof(CELL));
+            cell_load(symbol_cell, eeprom_addr_to_cell_ptr(addr));
 
-            eeprom_read(
-                addr + sizeof(EEPROM_BLOCK),
-                &symbol_binding->symbol_cell,
-                sizeof(CELL));
-
-            addr += sizeof(EEPROM_BLOCK);
-
-            /* copy symbol */
+            dassert(cell_is_symbol(symbol_cell), EEPROM_BINDING_NOT_SYMBOL);
             dassert(
-                CELL_IS_SYMBOL(symbol_binding->symbol_cell),
-                EEPROM_BINDING_NOT_SYMBOL);
-            CELL * const symbol_cell = &symbol_binding->symbol_cell;
-            if (symbol_cell->header.Symbol.is_ptr == FALSE) {
-                symbol_cell->header.Symbol.is_ptr = TRUE;
-                addr += sizeof(CELLHEADER);
-                symbol_cell->string_ptr = EEPROM_ADDR_TO_CHAR_PTR(addr);
-                addr += CELL_SYMBOL_LENGTH(symbol_binding->symbol_cell);
-            } else {
-                addr += sizeof(CELL);
-            }
+                cell_symbol_is_ptr(symbol_cell), EEPROM_BINDING_NOT_SYMBOL_PTR);
+            
+            addr = addr + sizeof(EEPROM_BLOCK) + sizeof(CELLHEADER);
+            symbol_cell->string_ptr = eeprom_addr_to_char_ptr(addr);
 
-            /* copy bound cell */
-            CELL * const bound_cell = &symbol_binding->bound_cell;
-            eeprom_read(addr + sizeof(EEPROM_BLOCK), bound_cell, sizeof(CELL));
+            addr = addr + cell_symbol_length(symbol_cell);
 
-            if (CELL_IS_LIST(*bound_cell)) {
-                if (bound_cell->header.List.is_ptr == FALSE) {
-                    bound_cell->header.List.is_ptr = TRUE;
-                    addr += sizeof(CELLHEADER);
-                    bound_cell->cells_ptr = (CELL*)EEPROM_ADDR_TO_PTR(addr);
-                    // asdf
-                } else {
-                    addr += sizeof(CELL);
-                }
-            } else if (CELL_IS_SYMBOL(*bound_cell)) {
-                bound_cell->header.Symbol.is_ptr = TRUE;
-                symbol_cell->string_ptr = (char*)EEPROM_ADDR_TO_PTR(
-                    addr + sizeof(EEPROM_BLOCK) + sizeof(CELLHEADER));
-            }
+            CELL *bound_cell = bistack_heapalloc(env->bs, sizeof(CELL));
+            cell_load(bound_cell, eeprom_addr_to_cell_ptr(addr));
+
+            addr = eeprom_cell_ptr_to_addr(
+                    cell_advance(env->bs, eeprom_addr_to_cell_ptr(addr)));
         }
     }
-}
-
-
-CELL *increment_past(CELL *addr) {
-    CELLADDR
-    dassert(addr->)
-}
-
-
-/**
- * Marks a gc point in the bistack and pushes a symbol table in the environment
- */
-SYMBOLTABLE *env_pushsymtable(ENVIRONMENT *env) {
-  bistack_pushdir(env->bs, env->dir);
-  bistack_mark(env->bs);
-  SYMBOLTABLE *st = bistack_alloc(env->bs, sizeof(SYMBOLTABLE));
-  st->avlnode = NULL;
-  st->outer = env->innerbindings;
-  env->innerbindings = st;
-  if (!env->globalbindings) {
-    env->globalbindings = st;
-  }
-  bistack_popdir(env->bs);
-  return st;
-}
-
-
-/**
- * Removes the last symbol table from the environment and frees the last mark.
- */
-void env_popsymtable(ENVIRONMENT *env) {
-  assert(env->innerbindings != NULL);
-
-  bistack_pushdir(env->bs, env->dir);
-  bistack_rewind(env->bs);
-  if (env->innerbindings) {
-    env->innerbindings = env->innerbindings->outer;
-  }
-  bistack_popdir(env->bs);
-}
-
-/**
- * Binds a symbol in the environment.
- */
-void env_bind_symbol(ENVIRONMENT *env, SYMBOL sym, VALUE v) {
-  assert(env->innerbindings != NULL);
-
-  bistack_pushdir(env->bs, env->dir);
-  env->innerbindings->avlnode = avl_insert(env->innerbindings->avlnode,
-					   env->bs, sym, v);
-  bistack_popdir(env->bs);
 }

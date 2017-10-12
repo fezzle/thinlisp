@@ -22,8 +22,6 @@
 #define EEPROM_ADDR_TO_PTR(X) ((uint8_t*)X)
 #define NVMEM_ADDR_TO_PTR(X) ((uint8_t*)X)
 
-
-
 #ifndef PSTR
 // not Harvard architecture
 #define PGM_START_PTR ((void*)0)
@@ -89,6 +87,8 @@ typedef uint8_t list_size_t;
 typedef uint8_t string_size_t;
 typedef uint8_t symbol_size_t;
 typedef uint8_t string_hash_t;
+typedef uint8_t * byte_ptr_t;
+typedef uint8_t * byte_ptr_t;
 typedef char bool;
 
 #define BREAKPOINT \

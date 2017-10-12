@@ -28,16 +28,18 @@ enum {
   RUNTIME_SYMBOL_EXPECTED,
   RUNTIME_LIST_EXPECTED,
   RUNTIME_TWO_ARGUMENTS_EXPECTED,
+  
+  EEPROM_BINDING_NOT_SYMBOL_PTR,
   EEPROM_BINDING_NOT_SYMBOL,
+  
+  COMPILED_SIZE_UNEXPECTED,
+  UNEXPECTED_BRANCH,
 };
 
 
 char *thrown_error_to_string(char err);
 
 extern jmp_buf __jmpbuff;
-
-extern CELLHEADER *CELL_FALSE;
-extern CELLHEADER *CELL_TRUE;
 
 void lerror(uint16_t exctype, char *err, ...);
 void lassert(uint16_t truefalse, uint16_t exctype, ...);

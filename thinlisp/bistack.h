@@ -59,6 +59,14 @@ inline void *bistack_heapalloc(BISTACK *bs, uint16_t size) {
     return bistack_allocb(bs, size);
 }
 
+inline void *bistack_heapmark(BISTACK *bs) {
+    return bistack_markb(bs);
+}
+
+inline void *bistack_heaprewind(BISTACK *bs) {
+    return bistack_rewindb(bs);
+}
+
 static inline void bistack_pushdir(BISTACK *bs, unsigned char dir) {
   assert((bs->direction_stack & 0x80) == 0);
   bs->direction_stack <<= 1;

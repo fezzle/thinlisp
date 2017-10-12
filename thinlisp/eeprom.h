@@ -19,7 +19,6 @@
 #include "defines.h"
 #include "runtime.h"
 
-
 #define NOBLOCK_ADDR 0
 
 #define EEPROM_LOCK_TYPE_UNKNOWN (0)
@@ -35,9 +34,24 @@ typedef struct eeprom_block {
 
 
 #ifdef POSIX 
-#define EEPROM_ADDR_TO_CHAR_PTR(A) ((char*)(A))
 
-size_t eeprom_get_size() {
+inline char* eeprom_addr_to_char_ptr(eeprom_addr_t addr) {
+    return (char*)addr;
+}
+
+inline void* eeprom_addr_to_ptr(eeprom_addr_t addr) {
+    return (void*)addr;
+}
+
+inline eeprom_addr_t eeprom_ptr_to_addr(void *ptr) {
+    return (eeprom_addr_t)(ptr);
+}
+
+eeprom_addr_t eeprom_get_start() {
+    return 0;
+}
+
+eeprom_addr_t eeprom_get_end() {
     return 1024;
 }
 
@@ -48,7 +62,7 @@ int eeprom_open() {
             // eeprom file does not exist, create and write freeblock to init
             char *nullchar[] = { '\0' };
             fd = eeprom_open(O_CREAT | O_WRONLY);
-            for (int i=0; i<eeprom_get_size(); i++) {
+            for (int i = eeprom_get_start(); i < eeprom_get_end(); i++) {
                 write(fd, nullchar, 1);
             }
             close(fd);
@@ -82,9 +96,8 @@ void eeprom_write(eeprom_addr_t addr, void *buff, size_t n) {
 }
 
 void eeprom_free(eeprom_addr_t addr) {
-    size_t end_of_eeprom = eeprom_get_size() - sizeof(EEPROM_BLOCK);
     size_t pos = 0;
-    while (pos < end_of_eeprom) {
+    while (pos < eeprom_get_end()) {
         EEPROM_BLOCK fb;
         eeprom_read(pos, &fb, sizeof(fb));
         if (pos + sizeof(EEPROM_BLOCK) == addr) {
@@ -103,9 +116,8 @@ void eeprom_free(eeprom_addr_t addr) {
 }
 
 eeprom_addr_t eeprom_alloc(size_t size) {
-    eeprom_addr_t end_of_eeprom = eeprom_get_size() - sizeof(EEPROM_BLOCK);
     eeprom_addr_t pos = 0;
-    while (pos < end_of_eeprom) {
+    while (pos < eeprom_get_end()) {
         EEPROM_BLOCK fb;
         eeprom_read(pos, &fb, sizeof(fb));
         if (fb.is_free && fb.size >= size + sizeof(fb) + sizeof(fb)) {
@@ -138,7 +150,11 @@ eeprom_addr_t eeprom_alloc(size_t size) {
 #define MAGIC_WORD_SIZE 4
 #define MAGIC_WORD "lisp"
 
-size_t eeprom_get_size() {
+size_t eeprom_get_start() {
+    return 0;//EEPROM.length();
+}
+
+size_t eeprom_get_end() {
     return 1024//EEPROM.length();
 }
 

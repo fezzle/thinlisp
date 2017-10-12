@@ -12,7 +12,8 @@
         "eeprom.h": "c",
         "environment.h": "c",
         "runtime.h": "c",
-        "list.h": "c"
+        "list.h": "c",
+        "unistd.h": "c"
     },
     "editor.tabSize": 4,
     "editor.detectIndentation": false,

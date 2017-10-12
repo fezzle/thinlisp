@@ -4,6 +4,8 @@
 #include <stdint.h>
 
 #include "defines.h"
+#include "bistack.h"
+#include "runtime.h"
 
 // low 2 bits of AST type are numeration
 // high 6 bits are bitfield
@@ -94,7 +96,7 @@ typedef struct {
 typedef struct {
   uint16_t type : 2;
   uint16_t sign : 1;
-  uint16_t value_low : 13;
+  uint16_t value_high : 13;
 } INTEGER;
 
 
@@ -136,18 +138,43 @@ typedef struct cell {
 
 #define CELLHEADER_IS_INTEGER(X) ((X).Integer.type == AST_INTEGER)
 #define CELL_IS_INTEGER(X) ((X).header.Integer.type == AST_INTEGER)
-#define CELL_INTEGER_VAL(X) (\
-    (X).Integer.sign ? (X).Integer.value : -(X).Integer.value \
-    )
 
-#define CELL_IS_LIST(X) ((X).header.List.type == AST_LIST)
+inline char cellheader_is_integer(CELLHEADER *cellheader) {
+    return cellheader->Integer.type == AST_INTEGER;
+}
+inline char cell_is_integer(CELL *cell) {
+    return cell->header.Integer.type == AST_INTEGER;
+}
+
+/*#define CELL_INTEGER_VAL(X) (\
+        (int32_t)( \
+            (X).header.Integer.sign \
+            ? ((int32_t)(X).header.Integer.value_high << 16) + ((int32_t)(X).value_low) \
+            : (-(int32_t)(X).header.Integer.value_high << 16) - ((int32_t)(X).value_low)) \
+        )*/
+inline int32_t cell_integer_val(CELL &cell) {
+    int32_t val = (
+        ((int32_t)cell.header.Integer.value_high << 16) + (cell.value_low));
+    if (cell.header.Integer.sign == 1) {
+        return val;
+    } else {
+        return -val;
+    }
+}
+    
 #define CELLHEADER_IS_LIST(X) ((X).List.type == AST_LIST)
-#define CELL_LIST_LENGTH(X) ((X).List.length)
-
-#define CELL_IS_SYMBOL(X) ((X).header.Symbol.type == AST_SYMBOL)
+#define CELLHEADER_LIST_LENGTH(X) ((X).List.length)
+#define CELLHEADER_LIST_IS_PTR(X) ((X).List.is_ptr)
+#define CELL_IS_LIST(X) CELLHEADER_IS_LIST((X).header)
+#define CELL_LIST_LENGTH(X) CELLHEADER_LIST_LENGTH((X).header)
+#define CELL_LIST_IS_PTR(X) CELLHEADER_LIST_IS_PTR((X).header)
 #define CELLHEADER_IS_SYMBOL(X) ((X).Symbol.type == AST_SYMBOL)
-#define CELL_SYMBOL_LENGTH(X) ((X).header.Symbol.length)
 #define CELLHEADER_SYMBOL_LENGTH(X) ((X).Symbol.length)
+#define CELLHEADER_SYMBOL_IS_PTR(X) ((X).Symbol.is_ptr)
+#define CELL_IS_SYMBOL(X) CELLHEADER_IS_SYMBOL((X).header)
+#define CELL_SYMBOL_LENGTH(X) CELLHEADER_SYMBOL_LENGTH((X).header)
+#define CELL_SYMBOL_IS_PTR(X) CELLHEADER_SYMBOL_IS_PTR((X).header)
+
 
 #define CELL_IS_TRUE(X) ( \
     (CELL_IS_INTEGER(X) && CELL_INTEGER_VAL(X) != 0) || \
@@ -165,6 +192,18 @@ typedef struct cell {
 #define CELL_SYMBOL_HASH(X) ((X).Symbol.hash)
 #define CELL_SYMBOL_CHAR(X, C_I) (((CELL*)&X)->string[C_I])
 
+inline char cell_is_list(CELL *cell) {
+    return cell->header.Symbol.type == AST_LIST;
+}
+inline char cell_is_symbol(CELL *cell) {
+    return cell->header.Symbol.type == AST_SYMBOL;
+}
+inline string_size_t cell_symbol_length(CELL *cell) {
+    return cell->header.Symbol.length;
+}
+inline char cell_symbol_is_ptr(CELL *cell) {
+    return cell->header.Symbol.is_ptr;
+}
 
 #define CELLHEADER_LIST_PREFIX(X) ((X).List.prefix)
 #define CELL_LIST_PREFIX(X) ((X).header.List.prefix)
@@ -180,24 +219,24 @@ CELLHEADER *cell_list_init(
 
 int8_t cell_symbol_compare(CELL *a, CELL *b);
 
-CELLHEADER *cell_integer_init(CELLHEADER *cell, int16_t val) {
-    cell->Integer.type = AST_INTEGER;
-    if (val > 0) {
-        cell->Integer.value = val;
-        cell->Integer.sign = 1;
-    } else {
-        cell->Integer.value = -val;
-        cell->Integer.sign = 0;
+CELL *cell_integer_init(CELL *cell, int32_t val) {
+    cell->header.Integer.type = AST_INTEGER;
+    if (val < 0) {
+        val = -val;
+        cell->header.Integer.sign = 0;
+    } else { 
+        cell->header.Integer.sign = 1;
     }
+    cell->header.Integer.value_high = (uint16_t)(val >> 16);
+    cell->value_low = (uint16_t)val;
     return cell;
 }
 
-/**
- * TODO: update if CELLHEADER size changes
- */
-inline CELL *get_cell(CELLHEADER *dest, CELLHEADER *src) {
+
+inline CELLHEADER *cellheader_load(CELLHEADER *src, CELLHEADER *dest) {
     uint8_t *src_bytes = (uint8_t*)src;
     uint8_t *dest_bytes = (uint8_t*)dest;
+    dassert(sizeof(CELLHEADER) == 2, COMPILED_SIZE_UNEXPECTED);
     if (IS_PGM_PTR(src)) {
         dest_bytes[0] = PGM_READ_BYTE(src_bytes);
         dest_bytes[1] = PGM_READ_BYTE(src_bytes + 1);
@@ -208,24 +247,12 @@ inline CELL *get_cell(CELLHEADER *dest, CELLHEADER *src) {
         dest_bytes[0] = src_bytes[0];
         dest_bytes[1] = src_bytes[1];
     }
-
-    if (CELL_IS_LIST(*src)) {
-        dest->List.is_ptr = TRUE;
-        if (src->List.is_ptr) {
-            ((CELL*)dest)->cells_ptr = ((CELL*)src)->cells_ptr;
-        } else {
-            ((CELL*)dest)->cells_ptr = ((CELL*)src)->cells;
-        }
-    } else if (CELL_IS_SYMBOL(*src)) {
-        dest->Symbol.is_ptr = TRUE;
-        if (src->Symbol.is_ptr) {
-            ((CELL*)dest)->string_ptr = ((CELL*)src)->string_ptr;
-        } else {
-            ((CELL*)dest)->string_ptr = ((CELL*)src)->string;
-        }
-    }
-    return (CELL*)dest;
+    return dest;
 }
+
+
+CELL *cell_list_advance(BISTACK *bs, CELL *cellptr);
+CELL *cell_load(CELL *src, CELL *dest);
 
 inline CELLHEADER *cell_list_get_cells(CELLHEADER *cellheader) {
     /**
@@ -248,10 +275,6 @@ typedef struct string_function {
 
 char get_pgm_string(void *arg, string_size_t n) {
     return PGM_READ_BYTE((char*)arg + n);
-}
-
-char compare(STRING_DEREF *a, STRING_DEREF *b) {
-
 }
 
 

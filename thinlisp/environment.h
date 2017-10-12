@@ -1,9 +1,11 @@
 #ifndef ENVIRONMENT_H
 #define ENVIRONMENT_H
 
+
 #include "defines.h"
 #include "bistack.h"
 #include "nvmem.h"
+#include "eeprom.h"
 #include "cell.h"
 
 
@@ -62,5 +64,12 @@ CELL *env_find_symbol(CELL *symbol) {
   return NULL;
 }
 
+eeprom_addr_t eeprom_cell_ptr_to_addr(CELL *cell) {
+    return (eeprom_addr_t)(cell);
+}   
+
+CELL* eeprom_addr_to_cell_ptr(eeprom_addr_t addr) {
+    return (CELL *)addr;
+}
 
 #endif
