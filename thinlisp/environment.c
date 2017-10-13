@@ -45,8 +45,16 @@ void environment_boostrap_from_eeprom(ENVIRONMENT *env) {
             CELL *bound_cell = bistack_heapalloc(env->bs, sizeof(CELL));
             cell_load(bound_cell, eeprom_addr_to_cell_ptr(addr));
 
-            addr = eeprom_cell_ptr_to_addr(
+            if (CELL_IS_LIST(*bound_cell)) {               
+                addr = eeprom_cell_ptr_to_addr(
                     cell_advance(env->bs, eeprom_addr_to_cell_ptr(addr)));
+
+            } else if (CELL_IS_SYMBOL(*bound_cell)) {
+                bound_cell->header.Symbol.is_ptr = TRUE;
+
+                symbol_cell->string_ptr = eeprom_addr_to_char_ptr(
+                    addr + sizeof(EEPROM_BLOCK) + sizeof(CELLHEADER));    
+            }
         }
     }
 }

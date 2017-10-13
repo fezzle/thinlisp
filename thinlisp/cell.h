@@ -250,8 +250,7 @@ inline CELLHEADER *cellheader_load(CELLHEADER *src, CELLHEADER *dest) {
     return dest;
 }
 
-
-CELL *cell_list_advance(BISTACK *bs, CELL *cellptr);
+CELL *cell_advance(BISTACK *bs, CELL *cellptr);
 CELL *cell_load(CELL *src, CELL *dest);
 
 inline CELLHEADER *cell_list_get_cells(CELLHEADER *cellheader) {

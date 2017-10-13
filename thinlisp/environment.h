@@ -40,7 +40,6 @@ pointer_resolver get_resolver(void *ptr) {
   }
 }
 
-
 typedef struct symbol_binding {
     CELL symbol_cell;
     CELL bound_cell;
@@ -60,13 +59,25 @@ typedef struct environment {
 } ENVIRONMENT;
 
 
+void push_frame(ENVIRONMENT *env, SYMBOL_BINDING_FRAME *frame) {
+    SYMBOL_BINDING_FRAME **frame_ptr = &env->frame;
+    
+    while (*frame_ptr != NULL) {
+        frame_ptr = &(*frame_ptr)->next;
+    }
+    *frame_ptr = frame;
+}
+
+
 CELL *env_find_symbol(CELL *symbol) {
   return NULL;
 }
 
+
 eeprom_addr_t eeprom_cell_ptr_to_addr(CELL *cell) {
     return (eeprom_addr_t)(cell);
 }   
+
 
 CELL* eeprom_addr_to_cell_ptr(eeprom_addr_t addr) {
     return (CELL *)addr;
