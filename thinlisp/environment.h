@@ -48,7 +48,8 @@ typedef struct symbol_binding {
 
 
 typedef struct symbol_binding_frame {
-    SYMBOL_BINDING *symbol_binding;
+    list_size_t count;
+    SYMBOL_BINDING *bindings;
     struct symbol_binding_frame *next;
 } SYMBOL_BINDING_FRAME;
 
@@ -59,7 +60,10 @@ typedef struct environment {
 } ENVIRONMENT;
 
 
-void push_frame(ENVIRONMENT *env, SYMBOL_BINDING_FRAME *frame) {
+
+
+
+void env_push_frame(ENVIRONMENT *env, SYMBOL_BINDING_FRAME *frame) {
     SYMBOL_BINDING_FRAME **frame_ptr = &env->frame;
     
     while (*frame_ptr != NULL) {

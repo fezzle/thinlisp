@@ -294,6 +294,7 @@ READER_CONTEXT *new_reader_context(AST_TYPE asttype, BISTACK *bs) {
         rc->cellheader = bistack_allocf(bs, sizeof(CELLHEADER));
         cell_list_init(rc->cellheader, asttype.prefix, FALSE, 0);
         break;
+
     case AST_SYMBOL:
         lassert(
             asttype.prefix < (1<<CELL_SYMBOL_PREFIX_BITS),
@@ -308,6 +309,7 @@ READER_CONTEXT *new_reader_context(AST_TYPE asttype, BISTACK *bs) {
         rc->cellheader->Symbol.prefix = asttype.prefix;
         rc->cellheader->Symbol.length = 0;
         break;
+
     case AST_INTEGER:
         rc->integer = bistack_alloc(bs, sizeof(READER_INTEGER_CONTEXT));
         rc->cellheader = bistack_allocf(bs, sizeof(CELLHEADER));
@@ -315,6 +317,7 @@ READER_CONTEXT *new_reader_context(AST_TYPE asttype, BISTACK *bs) {
         rc->cellheader->Integer.sign = 1;
         rc->cellheader->Integer.value = 0;
         break;
+        
     default:
         lerror(READER_SYNTAX_ERROR, "unknown type");
     }

@@ -6,7 +6,6 @@
 #include "environment.h"
 
 
-
 CELL *frame_find_symbol(SYMBOL_BINDING_FRAME *frame, CELL *symbol_cell) {
     SYMBOL_BINDING_FRAME *frame_itr = frame;
     while (frame_itr) {
@@ -25,34 +24,50 @@ CELL *frame_find_symbol(SYMBOL_BINDING_FRAME *frame, CELL *symbol_cell) {
 void environment_boostrap_from_eeprom(ENVIRONMENT *env) {
     EEPROM_BLOCK itr;
     eeprom_addr_t addr = eeprom_get_start();
+
+    SYMBOL_BINDING_FRAME *frame;
+
+    BISTACK *bs = env->bs;
+    bistack_lock_t bistack_lock = bistack_lockstack(bs);
+
+    // assoc cells are a list of 2-tuples containing symbol:cell bindings
+    CELL *assoc_cell = bistack_pushstack(bs, bistack_lock, sizeof(CELL));
+    cell_list_init(assoc_cell, AST_NONE, FALSE, 0);
+        
     while (addr < eeprom_get_end()) {
         eeprom_read(addr, &itr, sizeof(EEPROM_BLOCK));
+        addr += sizeof(EEPROM_BLOCK);
     
-        if (!itr.is_free && itr.type == EEPROM_BLOCK_TYPE_LISP) {
-            // load symbol cell
-            CELL *symbol_cell = bistack_heapalloc(env->bs, sizeof(CELL));
-            cell_load(symbol_cell, eeprom_addr_to_cell_ptr(addr));
+        if (itr.type == EEPROM_BLOCK_TYPE_LISP) {
+            // create tuple association cell
+            // [0] 2-tuple (list) cell
+            // [1] symbol cell
+            // [2] bound cell
+            CELL *cells = bistack_pushstack(bs, bistack_lock, 3 * sizeof(CELL));
+            cell_list_init(&cells[0], AST_NONE, FALSE, 2);
 
-            dassert(cell_is_symbol(symbol_cell), EEPROM_BINDING_NOT_SYMBOL);
+            // load symbol cell
+            cell_load(&cells[1], eeprom_addr_to_cell_ptr(addr));
+
+            dassert(cell_is_symbol(&cells[1]), EEPROM_BINDING_NOT_SYMBOL);
             dassert(
-                cell_symbol_is_ptr(symbol_cell), EEPROM_BINDING_NOT_SYMBOL_PTR);
+                cell_symbol_is_ptr(&cells[1]), EEPROM_BINDING_NOT_SYMBOL_PTR);
             
             addr = addr + sizeof(EEPROM_BLOCK) + sizeof(CELLHEADER);
-            symbol_cell->string_ptr = eeprom_addr_to_char_ptr(addr);
+            cells[1].string_ptr = eeprom_addr_to_char_ptr(addr);
 
-            addr = addr + cell_symbol_length(symbol_cell);
+            addr = addr + cell_symbol_length(&cells[1]);
 
-            CELL *bound_cell = bistack_heapalloc(env->bs, sizeof(CELL));
-            cell_load(bound_cell, eeprom_addr_to_cell_ptr(addr));
+            cell_load(&cells[2], eeprom_addr_to_cell_ptr(addr));
 
-            if (CELL_IS_LIST(*bound_cell)) {               
+            if (CELL_IS_LIST(cells[2])) {               
                 addr = eeprom_cell_ptr_to_addr(
                     cell_advance(env->bs, eeprom_addr_to_cell_ptr(addr)));
 
-            } else if (CELL_IS_SYMBOL(*bound_cell)) {
-                bound_cell->header.Symbol.is_ptr = TRUE;
+            } else if (CELL_IS_SYMBOL(cells[2])) {
+                cells[2].header.Symbol.is_ptr = TRUE;
 
-                symbol_cell->string_ptr = eeprom_addr_to_char_ptr(
+                cells[2].string_ptr = eeprom_addr_to_char_ptr(
                     addr + sizeof(EEPROM_BLOCK) + sizeof(CELLHEADER));    
             }
         }

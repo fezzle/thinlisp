@@ -147,11 +147,11 @@ inline char cell_is_integer(CELL *cell) {
 }
 
 /*#define CELL_INTEGER_VAL(X) (\
-        (int32_t)( \
-            (X).header.Integer.sign \
-            ? ((int32_t)(X).header.Integer.value_high << 16) + ((int32_t)(X).value_low) \
-            : (-(int32_t)(X).header.Integer.value_high << 16) - ((int32_t)(X).value_low)) \
-        )*/
+    (int32_t)( \
+        (X).header.Integer.sign \
+        ? ((int32_t)(X).header.Integer.value_high << 16) + ((int32_t)(X).value_low) \
+        : (-(int32_t)(X).header.Integer.value_high << 16) - ((int32_t)(X).value_low)) \
+    )*/
 inline int32_t cell_integer_val(CELL &cell) {
     int32_t val = (
         ((int32_t)cell.header.Integer.value_high << 16) + (cell.value_low));
@@ -208,7 +208,7 @@ inline char cell_symbol_is_ptr(CELL *cell) {
 #define CELLHEADER_LIST_PREFIX(X) ((X).List.prefix)
 #define CELL_LIST_PREFIX(X) ((X).header.List.prefix)
 
-CELLHEADER *cell_list_init(
+CELLHEADER *cellheader_list_init(
         CELLHEADER *cell, uint8_t prefix, bool is_ptr, list_size_t length) {
     cell->List.type = AST_LIST;
     cell->List.prefix = prefix;
@@ -216,6 +216,16 @@ CELLHEADER *cell_list_init(
     cell->List.length = length;
     return cell;
 }
+
+CELL *cell_list_init(
+        CELL *cell, uint8_t prefix, bool is_ptr, list_size_t length) {
+    cell->header.List.type = AST_LIST;
+    cell->header.List.prefix = prefix;
+    cell->header.List.is_ptr = is_ptr;
+    cell->header.List.length = length;
+    return cell;
+}
+
 
 int8_t cell_symbol_compare(CELL *a, CELL *b);
 

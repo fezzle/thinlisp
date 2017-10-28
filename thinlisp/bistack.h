@@ -5,12 +5,19 @@
 #include <stdint.h>
 #include <assert.h>
 
+
+#include "runtime.h"
+
 //bistack.c debug
 //#define BS_DEBUG(...) fprintf(stderr, __VA_ARGS__)
 #define BS_DEBUG(...)
 
 #define BS_FORWARD 0
 #define BS_BACKWARD 1
+
+typedef uint16_t bistack_lock_t;
+
+static bistack_lock_t next_lock_id;
 
 typedef struct bistack {
   void *forwardptr;
@@ -20,6 +27,7 @@ typedef struct bistack {
   void **backwardmark;
 
   uint8_t direction_stack;
+  uint16_t forward_lock;
 } BISTACK;
 
 BISTACK *bistack_new(size_t size);
@@ -46,6 +54,22 @@ void *bistack_markb(BISTACK *bs);
 void *bistack_rewindb(BISTACK *bs);
 
 void bistack_zero(BISTACK *bs);
+
+bistack_lock_t bistack_lockstack(BISTACK *bs) {
+    lassert(bs->forward_lock == 0, BISTACK_LOCK_HELD);
+    bs->forward_lock = ++next_lock_id;
+    return bs->forward_lock;
+}
+
+void *bistack_pushstack(BISTACK *bs, uint16_t lock, size_t size) {
+    lassert(bs->forward_lock == lock, BISTACK_LOCK_HELD);
+    return bistack_allocf(bs, size);
+}
+
+void bistack_lockfree(BISTACK *bs, uint16_t lock) {
+    lassert(bs->forward_lock == lock, BISTACK_LOCK_HELD);
+    bs->forward_lock = 0;
+}
 
 void *bistack_dropmark(BISTACK *bs);
 void *bistack_dropmarkf(BISTACK *bs);

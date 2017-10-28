@@ -47,6 +47,7 @@ BISTACK *bistack_init(void *buffer, size_t size) {
   bs->backwardmark = NULL;
 
   bs->direction_stack = BS_FORWARD;
+  bs->forward_lock = 0;
 
   // mark forward and backward stacks
   bistack_markf(bs);

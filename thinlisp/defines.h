@@ -18,13 +18,17 @@
 #define POSIX
 #endif
 
+typedef size_t code_addr_t;
+
+#define COMPARE_EQUAL 0
 
 #define EEPROM_ADDR_TO_PTR(X) ((uint8_t*)X)
-#define NVMEM_ADDR_TO_PTR(X) ((uint8_t*)X)
 
 #ifndef PSTR
 // not Harvard architecture
 #define PGM_START_PTR ((void*)0)
+
+#define PGM_P const char * 
 
 #define PSTR(X) ((char*)(X))
 #define strncmp_P strncmp
@@ -80,6 +84,17 @@ void deref_symbol(void *ptr, void *immediate) {
     }
 }
 
+typedef uint8_t (*read_byte_fn)(code_addr_t addr);
+typedef uint8_t (*read_buff_fn)(code_addr_t addr, uint8_t *buff, size_t len);
+
+uint8_t pgmem_read_byte(code_addr_t addr) {
+    return PGM_READ_BYTE(addr);
+}
+
+uint8_t pgmem_read_buff(code_addr_t addr, uint8_t *buff, size_t len) {
+    PGM_READ_BYTE(addr);
+}
+
 #define MAX_LIST_SIZE 255
 #define MAX_STRING_SIZE 64
 
@@ -89,7 +104,18 @@ typedef uint8_t symbol_size_t;
 typedef uint8_t string_hash_t;
 typedef uint8_t * byte_ptr_t;
 typedef uint8_t * byte_ptr_t;
+typedef uint8_t * nvmem_ptr_t;
 typedef char bool;
+
+byte_ptr_t nvmem_addr_to_ptr(nvmem_ptr_t ptr) {
+    return (byte_ptr_t)ptr;
+}
+
+char *nvmem_addr_to_chrptr(nvmem_ptr_t ptr) {
+    return (char *)ptr;
+}
+
+
 
 #define BREAKPOINT \
   { \
