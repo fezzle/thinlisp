@@ -55,6 +55,29 @@ static const AST_TYPE AST_TERMINATOR = ((AST_TYPE) {
     .terminator = TRUE,
 });
 
+
+void start_string_display(READER *r) {
+    r->state = start_string_display;
+}
+
+void read_string_raw_decimal(READER *r, char c) {
+    if (r->pos == INTBUFF_SIZE) {
+        return;
+    }
+    r->intbuff[r->pos++] = c;
+}
+void start_string_raw_decimal(READER *r) {
+    r->state = STRING_RAW_DECIMAL;
+    r->pos = 0;
+}
+void start_string_token(READER *r) {
+    r->state = STRING_TOKEN;
+}
+void read_string_token(READER *r, char c) {
+    // todo
+}
+
+
 AST_TYPE reader_next_cell(READER *reader) {
     if (next_non_ws(reader) == -1) {
         return AST_NOTYPE;
@@ -63,8 +86,23 @@ AST_TYPE reader_next_cell(READER *reader) {
     AST_TYPE asttype = AST_NOTYPE;
     char chars_read_buffer[4];
     char chars_read = 0;
+
     while (TRUE) {
         char c = reader_getc(reader);
+        switch (reader->state) {
+        case STRING_OR_LIST:
+            if (c == '[') {
+                start_string_display(reader);
+            } else if (c >= '0' && c <= '9') {
+                start_string_raw_decimal(reader);
+                read_string_raw_decimal(reader, c);
+            } else if (is_alpha_decimal_simplepunc(c)) {
+                start_string_token(reader);
+                read_string_raw_decimal
+            }
+        }
+
+
         if (c == -1) {
             // put back all the characters we read
             while (chars_read-- > 0) {

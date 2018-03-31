@@ -1,7 +1,7 @@
 USE_READLINE ?=
 CFLAGS += -g
 LDFLAGS += -g
-CC = llvm-gcc
+CC = mingw32-gcc
 
 #####################
 
