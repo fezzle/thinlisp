@@ -15,6 +15,8 @@
 #define BS_FORWARD 0
 #define BS_BACKWARD 1
 
+#define SIZEOF_MARK (sizeof(void*))
+
 typedef uint16_t bistack_lock_t;
 
 static bistack_lock_t next_lock_id;
@@ -61,15 +63,44 @@ bistack_lock_t bistack_lockstack(BISTACK *bs) {
     return bs->forward_lock;
 }
 
-void *bistack_pushstack(BISTACK *bs, uint16_t lock, size_t size) {
+void *bistack_reservestack(BISTACK *bs, bistack_lock_t lock, size_t size) {
+    /**
+     * Reserves a desired number of bytes on the stack
+     * :param lock: a lock provided by a call to bistack_lockstack.
+     * :param size: the number of bytes to be reserved.
+     */
+    lassert(bs->forward_lock == lock, BISTACK_LOCK_HELD);
+    bistack_markf(bs);
+    return bistack_allocf(bs, size);
+}
+
+void *bistack_claimstack(BISTACK *bs, bistack_lock_t lock, size_t size) {
+    /**
+     * Claims a number of bytes from a reserved stack.  The previous bistack
+     * call must have been a bistack_reservestack call.
+     */
+    lassert(bs->forward_lock == lock, BISTACK_LOCK_HELD);
+
+    // rewind mark, set mark again and allocate desired size
+    bistack_rewindf(bs);
+    bistack_markf(bs);
+    return bistack_allocf(bs, size);
+}
+
+void *bistack_rewindstack(BISTACK *bs) {
+    return bistack_rewindf(bs);
+}
+
+void *bistack_pushstack(BISTACK *bs, bistack_lock_t lock, size_t size) {
     lassert(bs->forward_lock == lock, BISTACK_LOCK_HELD);
     return bistack_allocf(bs, size);
 }
 
-void bistack_lockfree(BISTACK *bs, uint16_t lock) {
+void bistack_unlock(BISTACK *bs, bistack_lock_t lock) {
     lassert(bs->forward_lock == lock, BISTACK_LOCK_HELD);
     bs->forward_lock = 0;
 }
+
 
 void *bistack_dropmark(BISTACK *bs);
 void *bistack_dropmarkf(BISTACK *bs);

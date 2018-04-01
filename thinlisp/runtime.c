@@ -6,6 +6,9 @@
 
 jmp_buf __jmpbuff;
 
+
+void *mem_offset;
+
 void lerror(uint16_t exctype, char *err, ...) {
   #ifndef LIMITED_ENVIRONMENT
   //printf("ERROR: %s\n", err);
@@ -26,7 +29,6 @@ void dassert(uint16_t truefalse, uint16_t exctype, ...) {
     }   
 #endif
 }
-
 
 char *thrown_error_to_string(char err) {
     switch(err) {

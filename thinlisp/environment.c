@@ -67,8 +67,9 @@ void environment_boostrap_from_eeprom(ENVIRONMENT *env) {
             } else if (CELL_IS_SYMBOL(cells[2])) {
                 cells[2].header.Symbol.is_ptr = TRUE;
 
-                cells[2].string_ptr = eeprom_addr_to_char_ptr(
-                    addr + sizeof(EEPROM_BLOCK) + sizeof(CELLHEADER));    
+                addr = addr + sizeof(EEPROM_BLOCK) + sizeof(CELLHEADER);
+                cells[2].string_ptr = eeprom_addr_to_char_ptr(addr);
+                addr += 
             }
         }
     }

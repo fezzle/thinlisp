@@ -13,7 +13,8 @@
         "environment.h": "c",
         "runtime.h": "c",
         "list.h": "c",
-        "unistd.h": "c"
+        "unistd.h": "c",
+        "setjmp.h": "c"
     },
     "editor.tabSize": 4,
     "editor.detectIndentation": false,

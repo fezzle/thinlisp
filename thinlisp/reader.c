@@ -7,33 +7,27 @@
 #include "defines.h"
 #include "reader.h"
 #include "runtime.h"
-#include "list.h"
+#include "cell.h"
 
 ENVIRONMENT *environment_new(BISTACK *bs) {
     ENVIRONMENT *e = bistack_alloc(bs, sizeof(ENVIRONMENT));
     e->bs = bs;
-    e->total_symbols = 0;
-    e->total_strlen = 0;
-    e->total_astnodes = 0;
     return e;
 }
 
 READER *reader_init(READER *reader) {
-    reader->in_comment = FALSE;
     reader->put_missing_context = NULL;
     reader->pprint_context = NULL;
-    reader->reader_context = new_reader_context(
-        (AST_TYPE){
-            .type = AST_LIST,
-            .prefix = AST_NONE,
-            .terminator = AST_NONE,
-        },
-        reader->environment->bs);
+    reader->reader_context = new_reader_context(reader->environment->bs, NULL);
     reader->ungetbuff_i = 0;
-    reader->putc_streamobj = NULL;
+    
     reader->putc = NULL;
-    reader->getc_streamobj = NULL;
+    reader->putc_streamobj = NULL;
+
     reader->getc = NULL;
+    reader->getc_address = NULL;
+    reader->getc_streamobj = NULL;
+    
     return reader;
 }
 
@@ -43,207 +37,7 @@ READER *reader_new(ENVIRONMENT *e) {
     return reader_init(reader);
 }
 
-static const AST_TYPE AST_NOTYPE = ((AST_TYPE) {
-    .type = AST_NONE,
-    .prefix = AST_NONE,
-    .terminator = AST_NONE,
-});
 
-static const AST_TYPE AST_TERMINATOR = ((AST_TYPE) {
-    .type = AST_LIST,
-    .prefix = AST_NONE,
-    .terminator = TRUE,
-});
-
-AST_TYPE reader_next_cell(READER *reader) {
-    if (next_non_ws(reader) == -1) {
-        return AST_NOTYPE;
-    }
-
-    AST_TYPE asttype = AST_NOTYPE;
-    char chars_read_buffer[4];
-    char chars_read = 0;
-    while (TRUE) {
-        char c = reader_getc(reader);
-        if (c == -1) {
-            // put back all the characters we read
-            while (chars_read-- > 0) {
-                reader_ungetc(reader, chars_read_buffer[chars_read]);
-            }
-            return AST_NOTYPE;
-        }
-        lassert(chars_read < sizeof(chars_read_buffer), READER_STATE_ERROR);
-        chars_read_buffer[chars_read++] = c;
-
-        switch (c) {
-        case '"':
-            return (AST_TYPE){.type=AST_SYMBOL, .prefix=AST_DOUBLEQUOTE};
-
-        case '\'':
-            if (asttype.prefix == AST_HASH) {
-                asttype.prefix = AST_HASH_QUOTE;
-            } else {
-                asttype.prefix = AST_SINGLEQUOTE;
-            }
-            continue;
-
-        case '`':
-            asttype.prefix = AST_QUASIQUOTE;
-            continue;
-
-        case '(':
-            return (AST_TYPE){.type=AST_LIST, .prefix=asttype.prefix};
-
-        case ',':
-            asttype.prefix = AST_COMMA;
-            continue;
-
-        case '@':
-            if (asttype.prefix == AST_COMMA) {
-                asttype.prefix = AST_COMMA_AT;
-            } else {
-                asttype.prefix = AST_AT;
-            }
-            continue;
-
-        case '+':
-            asttype.prefix = AST_PLUS;
-            continue;
-
-        case '-':
-            asttype.prefix = AST_MINUS;
-            continue;
-
-        case '#':
-            asttype.prefix = AST_HASH;
-            continue;
-
-        case ';':
-            lassert(
-                asttype.bitfield == AST_NOTYPE.bitfield,
-                READER_SYNTAX_ERROR,
-                "comment in expression");
-            chars_read = 0;
-            reader->in_comment = TRUE;
-            if (reader_consume_comment(reader) && next_non_ws(reader) != -1) {
-                continue;
-            } else {
-                return AST_NOTYPE;
-            }
-
-        case ')':
-            return AST_TERMINATOR;
-
-        case ' ':
-        case '\n':
-            // space/newline encountered while reading start of new cell.
-            // this can occur after reading a 1 character prefix that should be
-            //  treated like a symbol (ex: '-' or '+')
-            while (chars_read-- > 0) {
-                reader_ungetc(reader, chars_read_buffer[chars_read]);
-            }
-            return (AST_TYPE){
-                .type=AST_SYMBOL,
-                .prefix=AST_NONE,
-                .terminator=FALSE
-            };
-        default:
-            if (((c & 0b110000) && (c >= '0' && c <= '9'))) {
-                reader_ungetc(reader, c);
-                return (AST_TYPE){
-                    .type=AST_INTEGER,
-                    .prefix=asttype.prefix,
-                    .terminator=FALSE};
-
-            } else if ((c >= '"') && (c <= '~')) {
-                // all non-control characters are treated like a symbol
-                reader_ungetc(reader, c);
-                return (AST_TYPE){
-                    .type=AST_SYMBOL,
-                    .prefix=asttype.prefix,
-                    .terminator=FALSE
-                };
-
-            } else {
-                lerror(READER_SYNTAX_ERROR, "unhandled: %c(%hhx)\n", c, c);
-            }
-        }
-    }
-    lerror(READER_SYNTAX_ERROR, "runtime error");
-}
-
-bool reader_integer_context(READER *reader, READER_CONTEXT *reader_context) {
-    lassert(reader_context->asttype.type == AST_INTEGER, READER_STATE_ERROR);
-
-    CELLHEADER *header = reader_context->cellheader;
-    uint16_t value = header->Integer.value;
-    while (1) {
-        char c = reader_getc(reader);
-        if (c == -1) {
-            return FALSE;
-
-        } else if (value == 0 &&  (c == '-' || c == '+')) {
-            header->Integer.sign = (c == '-' ? 0 : 1);
-
-        } else if (c >= '0' && c <= '9') {
-            value = value * 10 + (c - '0');
-            header->Integer.value = value;
-
-        } else {
-            reader_ungetc(reader, c);
-            return TRUE;
-        }
-    }
-}
-
-
-bool reader_symbol_context(READER *reader, READER_CONTEXT *reader_context) {
-    lassert(reader_context->asttype.type == AST_SYMBOL, READER_STATE_ERROR);
-
-    READER_SYMBOL_CONTEXT *symbol_context = reader_context->symbol;
-    CELLHEADER *header = reader_context->cellheader;
-    char is_double_quoted = reader_context->asttype.prefix == AST_DOUBLEQUOTE;
-
-    char finished = FALSE;
-    while (! finished) {
-        char c = reader_getc(reader);
-
-        if (c == -1) {
-            return FALSE;
-
-        } else if (c == '\\' && !symbol_context->is_escaped) {
-            // accept character and set is_escaped
-            symbol_context->is_escaped = 1;
-            continue;
-
-        } else if (symbol_context->is_escaped) {
-            // accept character
-
-        } else if (!is_double_quoted &&
-                (is_whitespace(c) || (c == ')') || (c == ';'))) {
-            // put back character that ends non-double-quoted symbol
-            reader_ungetc(reader, c);
-            break;
-
-        } else if (is_double_quoted && c == '"') {
-            // indicates end iff symbol is double quoted
-            finished = is_double_quoted && header->Symbol.length > 0;
-            continue;
-        }
-
-        if (header->Symbol.length < ((1 << 6) - 1)) {
-            ((char*)(&header[1]))[header->Symbol.length++] = c;
-            symbol_context->is_escaped = 0;
-        }
-    }
-
-    header->Symbol.hash = hashstr_8(
-        (char*)(&header[1]),
-        header->Symbol.length);
-
-    bistack_allocf(reader->environment->bs, header->Symbol.length);
-    return TRUE;
-}
 
 /**
  * @return TRUE iff a non-zero digit was printed
@@ -264,276 +58,230 @@ char putc_tens(READER *r, uint16_t* value, uint16_t tens, char* print_zero) {
 
 char reader_consume_comment(READER *reader) {
     // reads comment characters until newline
-    while (reader->in_comment) {
+    while (reader->state == READER_READING_COMMENT) {
         char c = reader_getc(reader);
         if (c == -1) {
-        return FALSE;
+            return FALSE;
         } else if (c == '\n') {
-        reader->in_comment = FALSE;
+            reader->state = READER_READING_NEXT_SYMBOL;
         }
     }
     return TRUE;
 }
 
 
-READER_CONTEXT *new_reader_context(AST_TYPE asttype, BISTACK *bs) {
+inline READER_CONTEXT *reader_push_context(READER *reader) {
     /**
     * Marks and allocates a READER_CONTEXT on the default(BACKWARD) stack of BS
     * Allocates a new CELLHEADER on the FORWARD stack of BS.
     */
-    void *rewindmark = bistack_mark(bs);
-    READER_CONTEXT *rc = bistack_alloc(bs, sizeof(READER_CONTEXT));
+    BISTACK *bs = reader->environment->bs;
+    READER_CONTEXT *reader_context = reader->reader_context;
 
-    rc->asttype = asttype;
+    void *rewindmark = bistack_heapmark(bs);
+    READER_CONTEXT *rc = bistack_heapalloc(bs, sizeof(READER_CONTEXT));
     rc->rewindmark = rewindmark;
-
-    switch (asttype.type) {
-    case AST_LIST:
-        rc->list = bistack_alloc(bs, sizeof(READER_LIST_CONTEXT));
-        rc->list->reader_context = NULL;
-        rc->cellheader = bistack_allocf(bs, sizeof(CELLHEADER));
-        cell_list_init(rc->cellheader, asttype.prefix, FALSE, 0);
-        break;
-
-    case AST_SYMBOL:
-        lassert(
-            asttype.prefix < (1<<CELL_SYMBOL_PREFIX_BITS),
-            READER_SYNTAX_ERROR,
-            PSTR("Unhandled symbol prefix: %c%c"),
-            AST_PREFIX_CHAR1(asttype.prefix),
-            AST_PREFIX_CHAR2(asttype.prefix));
-        rc->symbol = bistack_alloc(bs, sizeof(READER_SYMBOL_CONTEXT));
-        rc->symbol->is_escaped = 0;
-        rc->cellheader = bistack_allocf(bs, sizeof(CELLHEADER));
-        rc->cellheader->Symbol.type = asttype.type;
-        rc->cellheader->Symbol.prefix = asttype.prefix;
-        rc->cellheader->Symbol.length = 0;
-        break;
-
-    case AST_INTEGER:
-        rc->integer = bistack_alloc(bs, sizeof(READER_INTEGER_CONTEXT));
-        rc->cellheader = bistack_allocf(bs, sizeof(CELLHEADER));
-        rc->cellheader->Integer.type = asttype.type;
-        rc->cellheader->Integer.sign = 1;
-        rc->cellheader->Integer.value = 0;
-        break;
-        
-    default:
-        lerror(READER_SYNTAX_ERROR, "unknown type");
-    }
-
+    rc->parent = reader_context;
+    rc->stack_lock = bistack_lockstack(bs);
+    reader->reader_context = rc;
     return rc;
 }
 
 
-void destroy_reader_context(BISTACK *bs, READER_CONTEXT *reader_context) {
+inline READER_CONTEXT *reader_pop_context(READER *reader) {
     /**
     * Destroys a reader context and asserts the rewind mark matches its mark
     */
-    void *rewind_mark = bistack_rewind(bs);
+    BISTACK *bs = reader->environment->bs;
+    READER_CONTEXT *reader_context = reader->reader_context;
+
+    void *rewind_mark = bistack_heaprewind(bs);
     lassert(rewind_mark == reader_context->rewindmark, READER_STATE_ERROR);
+    bistack_unlock(bs, reader_context->stack_lock);
+
+    reader->reader_context = reader_context->parent;
+    return reader->reader_context;
 }
 
 
-bool reader_put_missing(READER *reader) {
-    /**
-    * calls `reader_putc` with the characters missing to conclude the read.
-    */
-    lassert(reader->putc != NULL, READER_STATE_ERROR);
+inline CELL * reader_cell_alloc(READER *reader) {
+    return (CELL *)bistack_pushstack(
+        reader->environment->bs, 
+        reader->reader_context->stack_lock, 
+        sizeof(CELL));
+}
 
-    typedef struct {
-        READER_CONTEXT *reader_context;
-    } FRAME;
-
-    typedef struct {
-        LIST *frame_stack;
-        void *start_mark;
-    } PUT_MISSING_CONTEXT;
-
+bool_t reader_read(READER *reader) {
     BISTACK *bs = reader->environment->bs;
-    PUT_MISSING_CONTEXT *context = NULL;
 
-    if (reader->reader_context->list->reader_context == NULL) {
-        // nothing to read
-        return TRUE;
-    }
-
-    if (reader->put_missing_context == NULL) {
-        // mark and allocate PUT_MISSING_CONTEXT into bistack
-        void *start_mark = bistack_mark(reader->environment->bs);
-        reader->put_missing_context = bistack_alloc(
-            reader->environment->bs, sizeof(PUT_MISSING_CONTEXT));
-
-        context = (PUT_MISSING_CONTEXT*)reader->put_missing_context;
-        context->start_mark = start_mark;
-        context->frame_stack = list_new(bs);
-        FRAME *frame = bistack_alloc(bs, sizeof(FRAME));
-        frame->reader_context = reader->reader_context->list->reader_context;
-        list_unshift(context->frame_stack, bs, frame);
-        // populate frame-stack with reader_contexts
-        while (TRUE) {
-            if (frame->reader_context->asttype.type == AST_LIST
-                    && frame->reader_context->list->reader_context != NULL) {
-                FRAME *new_frame = bistack_alloc(bs, sizeof(FRAME));
-                new_frame->reader_context = (
-                    frame->reader_context->list->reader_context);
-                list_unshift(context->frame_stack, bs, new_frame);
-                frame = new_frame;
-            } else {
-                break;
+    // reader_contexts are hierachical through their ->list->reader_context
+    READER_CONTEXT *reader_context = reader->reader_context;
+            
+    while (reader->state != READER_READING_DONE) {
+        // consume all comments if currently in comment
+        if (reader->state == READER_READING_COMMENT) {
+            if (reader_consume_comment(reader) == FALSE) {
+                return FALSE;
             }
         }
-    } else {
-        context = (PUT_MISSING_CONTEXT*)reader->put_missing_context;
-    }
 
-    while (list_first(context->frame_stack)) {
-        FRAME *frame = (FRAME*)list_first(context->frame_stack);
-        READER_CONTEXT *reader_context = frame->reader_context;
-        AST_TYPE asttype = reader_context->asttype;
-
-        char end_char = '?';
-        if (asttype.type == AST_SYMBOL) {
-            end_char = asttype.prefix == AST_DOUBLEQUOTE ? '"' : '_';
-        } else if (asttype.type == AST_INTEGER) {
-            end_char = '#';
-        } else if (asttype.type == AST_LIST) {
-            end_char = ')';
-        }
-
-        if (!reader_putc(reader, end_char)) {
+        // get next char
+        char c = reader_getc(reader);
+        if (c == -1) {
             return FALSE;
         }
-        list_shift(context->frame_stack);
-    }
 
-    // rewind stack, assert mark is where we started.
-    void *start_mark = bistack_rewind(reader->environment->bs);
-    lassert(start_mark == context->start_mark, READER_STATE_ERROR);
-    reader->put_missing_context = NULL;
-    return TRUE;
-}
+        // handle next char based on current state
+        switch (reader->state) {
+            
+        case READER_READING_NEGATIVE_INTEGER:
+        case READER_READING_INTEGER:
+            if ((c & 0b110000) && c >= '0' && c <= '9')  {
+                uint32_t v = reader_context->cell->integer.value;
+                v = v * 10 + (c - '9');
+                if (v && reader->state == READER_READING_NEGATIVE_INTEGER) {
+                    // flip sign of integer value once its non-zero
+                    reader_context->cell->integer.value = -v;
+                    reader->state = READER_READING_INTEGER;
+                } else {
+                    reader_context->cell->integer.value = v;
+                }
+
+            } else if (is_whitespace(c) || c == ')') {
+                reader->state = READER_READING_INTEGER_DONE;
+
+            } else {
+                lerror(READER_NON_NUMERIC_IN_INTEGER);
+
+            }
+            break;
 
 
-char reader_read(READER *reader) {
-    BISTACK *bs = reader->environment->bs;
+        case READER_READING_PREFIX:
+            if (is_whitespace(c)) {
+                lerror(READER_WHITESPACE_IN_PREFIX);
+            } else if (c == ',') {
+                if (reader->reader_context->state != READER_IN_QUASIQUOTE) {
+                    lerror(READER_COMMA_ILLEGAL_OUTSIDE_OF_BACKQUOTE);
+                }
+            }
 
-    // consume all comments if currently in comment
-    if (reader->in_comment) {
-        if (reader_consume_comment(reader) == FALSE) {
-            return FALSE;
-        }
-    }
+            reader->state = READER_READING_NEXT_SYMBOL;
+            continue;
 
-    while (1) {
-        // reader_contexts are hierachical through their ->list->reader_context
-        READER_CONTEXT *reader_context = reader->reader_context;
 
-        // iterate through heirarchy of reader_contexts to find reader_context
-        //   and parent
-        READER_CONTEXT *parent_reader_context = NULL;
-        READER_CONTEXT *parent_parent_reader_context = NULL;
-        while (reader_context && reader_context->asttype.type == AST_LIST) {
-            parent_parent_reader_context = parent_reader_context;
-            parent_reader_context = reader_context;
-            reader_context = reader_context->list->reader_context;
-        }
+        case READER_READING_NEXT_SYMBOL:
+            if (c == '-') {
+                reader->state = READER_READING_NEGATIVE_INTEGER;
+                reader_context->cell = reader_cell_alloc(reader);
+                cell_init_integer(reader_context->cell, 0);
 
-        lassert(
-            parent_reader_context == NULL ||
-            parent_reader_context->asttype.type == AST_LIST,
-            READER_STATE_ERROR);
+            } else if (c == '+') {
+                reader->state = READER_READING_INTEGER;
+                reader_context->cell = reader_cell_alloc(reader);
+                cell_init_integer(reader_context->cell, 0);
 
-        if (reader_context == NULL) {
-            // find next cell
-            AST_TYPE asttype = reader_next_cell(reader);
-            if (asttype.bitfield == AST_NOTYPE.bitfield) {
-                // If no char available while reading next symbol in root
-                //  context, return TRUE.
-                // Else, a sublist remains unclosed, return FALSE
-                return parent_reader_context == reader->reader_context;
+            } else if (c == '(') {
+                reader->state = READER_READING_LIST;
+                reader_context->cell = reader_cell_alloc(reader);
+                cell_init_list(reader_context->cell, 0);
+                reader_context = new_reader_context(bs, reader_context);
 
-            } else if (asttype.terminator) {
-                // asttype has terminator flag indicated end of list
-                lassert(asttype.type == AST_LIST, READER_STATE_ERROR);
-                lassert(parent_reader_context != NULL, READER_STATE_ERROR);
+            } else if (c == ')') {
+                // terminate list
+            
+            } else if (c == ',') {
+                // evaluate next element
 
-                // parent_reader_context list is ending,
-                //   update parent_parent_reader
-                lassert(
-                    parent_parent_reader_context != NULL,
-                    READER_SYNTAX_SPURIOUS_LIST_TERMINATOR);
-                parent_parent_reader_context->cellheader->List.length++;
-                parent_parent_reader_context->list->reader_context = NULL;
-                destroy_reader_context(bs, parent_reader_context);
+            } else if (c == ';') {
+                reader->state = READER_READING_COMMENT;
                 continue;
-
+            
             } else {
-                // new cell
-                reader_context = new_reader_context(asttype, bs);
+                reader_context->cell = reader_cell_alloc(reader);
+                cell_init_symbol(reader_context->cell, 0);
 
-                // set parent_reader_context to be currently reading
-                //  reader_context
-                parent_reader_context->list->reader_context = reader_context;
+                if (reader->getc_address == NULL) {
+                    // can't get address of input stream position, need to 
+                    //  store string on stack
+                    reader_context->stack_lock = bistack_lockstack(bs);
+                    char *buff = bistack_reservestack(
+                        bs, reader_context->stack_lock, MAX_STRING_SIZE);
+
+                    buff[0] = c;
+                    reader_context->cell->symbol.address = mem_to_addr(bs);
+                    reader_context->cell->symbol.length++;
+                } else {
+                    // can get address
+                    reader_context->cell->symbol.address = (
+                        reader_getc_address(reader) - 1);
+                    reader_context->cell->symbol.length++;
+                }
+                
+                if (c == '"') {
+                    reader->state = READER_READING_SYMBOL_DOUBLEQUOTED;
+                } else {
+                    reader->state = READER_READING_SYMBOL;
+                }
+            }
+            break;
+        
+        case READER_READING_SYMBOL:
+        case READER_READING_SYMBOL_DOUBLEQUOTED:
+        case READER_READING_SYMBOL_DOUBLEQUOTED_ESCAPED:
+            if (reader->state == READER_READING_SYMBOL) {
+                if (is_whitespace(c)) {
+                    reader->state = READER_READING_SYMBOL_DONE;
+                    break;
+                }
+            } else if (reader->state == READER_READING_SYMBOL_DOUBLEQUOTED) {
+                if (c == '\\') { 
+                    reader->state = READER_READING_SYMBOL_DOUBLEQUOTED_ESCAPED;
+                    // don't break here, keep backslash in symbol
+                } else if (c == '"') {
+                    reader->state = READER_READING_SYMBOL_DONE;
+                    // don't break here, keep endquote in symbol
+                }
             }
 
-        }
+            if (reader->getc_address == NULL) {
+                // store character in pre-allocated buffer
+                char *buff = addr_to_mem(reader_context->cell->symbol.address);
+                buff[reader_context->cell->symbol.length] = c;
+            } 
+            reader_context->cell->symbol.length++;
+            break;
 
-        uint8_t asttype_type = reader_context->asttype.type;
-
-        if (asttype_type == AST_INTEGER || asttype_type == AST_SYMBOL) {
-            if (asttype_type == AST_SYMBOL) {
-                if (!reader_symbol_context(reader, reader_context)) {
-                    return 0;
-                }
-            } else if (asttype_type == AST_INTEGER) {
-                if (!reader_integer_context(reader, reader_context)) {
-                    return 0;
-                }
+        case READER_READING_SYMBOL_DONE:
+            if (reader->getc_address == NULL) {
+                // move string to heap
+                char *buff = bistack_heapalloc(
+                    bs, reader_context->cell->symbol.length);
+                memcpy(
+                    buff, 
+                    addr_to_mem(reader_context->cell->symbol.address), 
+                    reader_context->cell->symbol.length);
+                    reader_context->cell->symbol.address = mem_to_addr(buff);
+                bistack_rewindstack(bs);
             }
-            parent_reader_context->cellheader->List.length++;
-            parent_reader_context->list->reader_context = NULL;
-            destroy_reader_context(bs, reader_context);
-            reader_context = NULL;
-            continue;
+            
+            if (reader_context->parent) {
+                reader_context->parent->cell->list.length++;
+            }
+            reader->state = READER_READING_NEXT_SYMBOL;
+            break;
+    
+        case READER_READING_INTEGER_DONE:
+            if (reader_context->parent) {
+                reader_context->parent->cell->list.length++;
+            }
+            reader->state = READER_READING_NEXT_SYMBOL;
+            break;
 
-        } else if (asttype_type == AST_LIST) {
-            continue;
+        default:
+            lerror(READER_STATE_ERROR);
         }
     }
-    lerror(READER_STATE_ERROR, "unexpectedly reached end of reader loop");
-}
-
-
-uint16_t cellheader_character_count(CELLHEADER *cellheader) {
-    uint8_t frame_stack[16] = {0};
-    int8_t frame_i = -1;
-    uint16_t char_count = 0;
-
-    do {
-        if (cellheader->List.type == AST_LIST) {
-            char_count += 4;
-            frame_stack[++frame_i] = cellheader->List.length;
-            cellheader = &cellheader[1];
-
-        } else if (cellheader->Integer.type == AST_INTEGER) {
-            char_count += 6;
-            frame_stack[frame_i]--;
-            cellheader = &cellheader[1];
-
-        } else if (cellheader->Symbol.type == AST_SYMBOL) {
-            char_count += 2 + cellheader->Symbol.length;
-            frame_stack[frame_i]--;
-            cellheader = (CELLHEADER*)(
-                (void*)&cellheader[1] + cellheader->Symbol.length);
-        }
-
-        while (frame_i > 0 && frame_stack[frame_i] == 0) {
-            frame_stack[--frame_i]--;
-        }
-    } while (frame_stack[0] > 0);
-
-    return char_count;
 }
 
 

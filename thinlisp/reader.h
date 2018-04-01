@@ -7,38 +7,41 @@
 #include <stdio.h>
 #include "defines.h"
 #include "utils.h"
-#include "list.h"
 #include "bistack.h"
 #include "runtime.h"
 #include "thinlisp.h"
+#include "cell.h"
 
-typedef struct reader READER;
-typedef struct reader_context READER_CONTEXT;
+enum {
+    READER_READING_NEXT_SYMBOL=1,
+    READER_READING_SYMBOL, 
+    READER_READING_SYMBOL_DOUBLEQUOTED,
+    READER_READING_SYMBOL_DOUBLEQUOTED_ESCAPED,
+    READER_READING_SYMBOL_DONE,
+    READER_READING_INTEGER_DONE,
+    READER_READING_PREFIX,
+    READER_READING_LIST,
 
-typedef struct reader_symbolcontext {
-    char is_escaped;
-} READER_SYMBOL_CONTEXT;
+    READER_READING_COMMENT,
+    
+    READER_READING_NEGATIVE_INTEGER,
+    READER_READING_INTEGER,
+    READER_READING_DONE,
+};
 
-typedef struct reader_integercontext {
-} READER_INTEGER_CONTEXT;
 
-typedef struct reader_listcontext {
-    READER_CONTEXT *reader_context;
-} READER_LIST_CONTEXT;
+enum {
+    READER_IN_QUASIQUOTE=1,
+
+};
 
 typedef struct reader_context {
-    AST_TYPE asttype;
-    CELLHEADER *cellheader;
+    CELL *cell;
     void *rewindmark;
-
-    // the valid type below is identified by asttype.type
-    union {
-        READER_SYMBOL_CONTEXT *symbol;
-        READER_INTEGER_CONTEXT *integer;
-        READER_LIST_CONTEXT *list;
-    };
+    struct reader_context *parent;
+    uint8_t state;
+    bistack_lock_t stack_lock;
 } READER_CONTEXT;
-
 
 
 typedef struct reader {
@@ -46,28 +49,31 @@ typedef struct reader {
 
     void *getc_streamobj;
     char (*getc)(void *getc_streamobj);
+    address_t (*getc_address)(void *getc_streamobj);
 
     void *putc_streamobj;
     char (*putc)(void *putc_streamobj, char c);
 
     char ungetbuff[4];
 
-    uint8_t ungetbuff_i:4;
-    uint8_t in_comment:1;
+    uint8_t ungetbuff_i : 2;
+    uint8_t state;
 
     READER_CONTEXT *reader_context;
     void *put_missing_context;
     void *pprint_context;
 } READER;
 
+
 ENVIRONMENT *environment_new(BISTACK *bs);
 READER *reader_new(ENVIRONMENT *e);
 READER *reader_init(READER *reader);
-char reader_consume_comment(READER *reader);
-char reader_read(READER *reader);
-char reader_pprint(READER *reader);
-bool reader_put_missing(READER *reader);
-READER_CONTEXT *new_reader_context(AST_TYPE asttype, BISTACK *bs);
+bool_t reader_consume_comment(READER *reader);
+bool_t reader_read(READER *reader);
+bool_t reader_pprint(READER *reader);
+bool_t reader_put_missing(READER *reader);
+
+READER_CONTEXT *new_reader_context(BISTACK *bs, READER_CONTEXT *parent);
 
 static inline char reader_getc(READER *r) {
     char c;
@@ -77,6 +83,10 @@ static inline char reader_getc(READER *r) {
         c = r->getc(r->getc_streamobj);
     }
     return c;
+}
+
+static inline address_t reader_getc_address(READER *r) {
+    return r->getc_address(r->getc_streamobj);
 }
 
 static inline char reader_ungetc(READER *r, char c) {
@@ -97,10 +107,13 @@ static inline char reader_peekc(READER *r) {
 static inline void reader_set_getc(
         READER *r,
         char (*getc)(void *),
+        address_t (*getc_address)(void *),
         void *getc_streamobj) {
     r->getc = getc;
+    r->getc_address = getc_address;
     r->getc_streamobj = getc_streamobj;
 }
+
 
 static inline void reader_set_putc(
         READER *r,

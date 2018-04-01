@@ -28,9 +28,13 @@ enum {
   NVMEM_OUT_OF_MEMORY,
   NVMEM_ADDRESS_ERROR,
   
+  READER_NON_NUMERIC_IN_INTEGER,
   READER_SYNTAX_ERROR,
   READER_STATE_ERROR,
   READER_SYNTAX_SPURIOUS_LIST_TERMINATOR,
+  READER_WHITESPACE_IN_PREFIX,
+  READER_COMMA_ILLEGAL_OUTSIDE_OF_BACKQUOTE,
+  READER_LOCK_REUSED,
   
   RUNTIME_SYMBOL_IS_UNBOUND,
   RUNTIME_TWO_SYMBOL_ARGUMENTS_EXPECTED,
@@ -38,8 +42,8 @@ enum {
   RUNTIME_EQUAL_INSUFFICIENT_ARGUMENTS,
   RUNTIME_SYMBOL_EXPECTED,
   RUNTIME_LIST_EXPECTED,
-  RUNTIME_TWO_ARGUMENTS_EXPECTED, 
-  
+  RUNTIME_TWO_ARGUMENTS_EXPECTED,
+    
   UNEXPECTED_BRANCH,
 
   VLIST_INDEX_ERROR,
@@ -54,5 +58,28 @@ extern jmp_buf __jmpbuff;
 void lerror(uint16_t exctype, char *err, ...);
 void lassert(uint16_t truefalse, uint16_t exctype, ...);
 void dassert(uint16_t truefalse, uint16_t exctype, ...);
+
+extern void *mem_offset;
+
+inline address_t mem_to_addr(void *ptr) {
+    // return offset in 16meg(24-bit) window
+    address_t addr = ((address_t)ptr) & ((1<<ADDRESS_BITS) - 1);    
+    if (mem_offset == 0) {
+        mem_offset = ptr - addr;
+    }
+    return addr;
+}
+
+inline char *addr_to_chrptr(address_t addr) {
+    return mem_offset + addr;
+}
+
+inline char *addr_to_mem(address_t addr) {
+    return mem_offset + addr;
+}
+
+inline char *addr_to_voidptr(address_t addr) {
+    return mem_offset + addr;
+}
 
 #endif
