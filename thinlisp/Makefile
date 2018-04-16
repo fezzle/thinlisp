@@ -89,6 +89,9 @@ avl_test: $(patsubst %,%.c,$(AVL_SOURCES)) $(patsubst %,%.h,$(AVL_SOURCES))
 run_avl_test: avl_test
 	./bin/avl_test
 
+main: main.c
+	$(CC) $(CLFAGS) -g main.c -DAVL_TEST -o bin/$@
+
 all_test: heap_test
 
 femto: $(OBJECTS)

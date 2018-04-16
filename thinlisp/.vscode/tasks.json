@@ -9,6 +9,11 @@
     "echoCommand": true,
     "tasks": [
         {
+            "taskName": "compile main",
+            "args": ["-g", "main.c", "-o", "bin/main"],
+            "command": "llvm-gcc"
+        },
+        {
             "taskName": "make reader_test",
             "args": ["reader_test"],
             "command": "make"

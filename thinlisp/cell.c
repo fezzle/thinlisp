@@ -43,7 +43,11 @@
     }
 }
 
-typedef void *(*cell_visitor)(BISTACK *bs, CELL *cell, void *context);
+typedef void *(*cell_visitor)(
+        BISTACK *bs, 
+        CELL *cell, 
+        void *context,
+        eeprom_addr_t);
 
 void *cell_visit_pass(BISTACK *bs, CELL *cell, void *context) {
     return context;

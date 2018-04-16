@@ -17,6 +17,7 @@
 #define DEBUG 1
 #define TRUE (1)
 #define FALSE (0)
+#define MAX_RECURSION 8
 
 jmp_buf __jmpbuff;
 
@@ -39,10 +40,21 @@ void dassert(uint16_t truefalse, uint16_t exctype, ...) {
 #endif
 }
 
+enum { INTEGER=0, BIGINTEGER=1, STRING=2, LIST=3 };
 enum {
-    MEM_OUT_OF_IT, MEM_TOP_LOCKED, MEM_TOP_UNLOCKED,
-    MEM_BOTTOM_LOCKED, MEM_BOTTOM_UNLOCKED,
-    READER_UNGETC_ERROR
+    MEM_OUT_OF_IT=0, 
+    MEM_TOP_LOCKED, 
+    MEM_TOP_UNLOCKED,
+    MEM_BOTTOM_LOCKED, 
+    MEM_BOTTOM_UNLOCKED,
+
+    INTEGER_UNPACK_ON_INCORRECT_TYPE=10,
+    BINDING_NODE_SIZE_REMAINING_NONZERO,
+    RECURSION_DEPTH_EXCEEDED,
+    
+    READER_UNGETC_ERROR=20, 
+
+    INVALID_ARG_COUNT=40,
 };
 
 typedef struct mem {
@@ -135,7 +147,233 @@ void mem_bottomfree(MEM *m) {
     m->bottom_mark = *m->bottom_mark;
 }
 
-typedef struct environment ENVIRONMENT;
+typedef struct cell {
+    uint8_t type:2;
+    uint8_t length:6;
+    union {
+        struct {
+            union {
+                // strings are read backwards, then switched to forwards.
+                char *rev_str;
+                char *str;
+            };
+        };
+        struct {
+            uint16_t integer;
+        };
+        struct {
+            uint16_t list_modifiers;
+        };
+    };
+} CELL;
+
+int32_t cell_integer_unpack(CELL *cell) {
+    dassert(cell->type == INTEGER, INTEGER_UNPACK_ON_INCORRECT_TYPE);
+    int32_t res = (cell->length << 16) + cell->integer;
+    if (cell->length & 0x20) {
+        res = (-res) + 1;
+    } 
+    return res;
+}
+CELL *cell_integer_pack(CELL *cell, int32_t val) {
+    if (val < 0) {
+        val = -val;
+    }
+    // integer should be 16bits, store extra bits in length
+    cell->length = (val >> 16) & 0x3F;
+    cell->integer = val;
+    return cell;
+}
+
+CELL *add(MEM *m, CELL *list) {
+    int32_t val = 0;
+    for (uint8_t n=1; n<list->length; n++) {
+        val += cell_integer_unpack(&list[n]);
+    }
+    CELL *c = mem_bottomalloc(m, sizeof(CELL));
+    return cell_integer_pack(c, val);
+}
+
+CELL *subtract(MEM *m, CELL *list) {
+    CELL *c = mem_bottomalloc(m, sizeof(CELL));
+    int32_t val = 0;
+    if (list->length >= 1) {
+        val = cell_integer_unpack(&list[1]);
+    }
+    for (uint8_t n=2; n<list->length; n++) {
+        val -= cell_integer_unpack(&list[n]);
+    }
+    return cell_integer_pack(c, val);
+}
+
+CELL *defn(MEM *m, CELL *list) {
+    CELL *symbol = &list[1];
+    uint8_t argcount = list[2].length;
+    return list;
+}
+
+CELL *list_first(CELL *list) {
+    return &list[1];
+}
+
+CELL *next_cell(CELL *cell) {
+    uint8_t remaining[MAX_RECURSION];
+    uint8_t depth = 0;
+    if (cell->type != LIST) {
+        return &cell[1];
+    }
+    remaining[depth] = cell->length;
+    cell++;
+    while (TRUE) {
+        if (remaining[depth] == 0) {
+            depth--;
+        }
+        if (depth < 0) {
+            break;
+        }
+        if (cell->type == LIST) {
+            remaining[++depth] = cell->length;
+            lassert(depth < MAX_RECURSION, RECURSION_DEPTH_EXCEEDED);
+        }
+        cell++;
+    }
+    return cell;
+}
+
+CELL *eq(MEM *mem, CELL *list) {
+    lassert(list->length = 3, INVALID_ARG_COUNT);
+    uint8_t remaining[MAX_RECURSION];
+    uint8_t depth = 0;
+
+    uint8_t val = 1;
+    CELL *a = list_first(list);
+    CELL *b = next_cell(a);
+    while (TRUE) { 
+        if (a->type != b->type) {
+            return FALSE;
+        } 
+        if (a->length != b->length) {
+            return FALSE;
+        }
+        if (a->type == INTEGER && a->integer != b->integer) {
+            return FALSE;
+        } else if (a->type == STRING) {
+            for (uint8_t n=0; n<a->length; n++) {
+                if (a->str[n] != b->str[n]) {
+                    return FALSE;
+                }
+            }
+        } else {
+            remaining[depth++] = a->length;
+        }
+        a = next_cell(a);
+        b = next_cell(b);
+    }
+}
+
+enum modifier {
+    QUOTE, LAZY_EVAL,
+};
+typedef CELL* (*builtin_fn)(MEM *m, CELL *list);
+typedef struct builtin_binding {
+    builtin_fn fn;
+    uint8_t modifier:2;
+    uint8_t symbol_length:6;
+    char *symbol;
+} BUILTIN_BINDINGS[] = {
+    { .fn = add, .modifier = 0, .symbol = "+" },
+    { .fn = subtract, .modifier = 0, .symbol = "-"},
+    { .fn = eq, .modifier = 0, .symbol = "="},
+    { .fn = defn, .modifier = QUOTE, .symbol = "defn"},
+    { .fn = cond, .modifier = LAZY_EVAL, .symbol = "cond"},
+    { .fn = iff, .modifier = LAZY_EVAL, .symbol = "if"},
+    { .fn = let, .modifier = QUOTE, .symbol = "let"},
+    { .fn = append, .modifier = 0, .symbol = "append"},
+};
+#define BUILTIN_COUNT (sizeof(BUILTIN_BINDINGS) / sizeof(struct builtin_binding))
+
+typedef struct reader_state {
+    uint8_t parse_state;
+    union {
+        struct {
+            char first_char;
+            char last_char;
+        };
+        struct {
+            // int reading
+            uint32_t accumulator;
+            int8_t sign;
+        };
+        CELL *cell;
+    };
+    struct reader_state *parent;
+} READER_STATE;
+
+ /* BINDINGS */
+typedef struct binding_pair {
+    CELL *symbol;
+    CELL *value;
+} BINDING_PAIR;
+
+typedef struct binding_vlist_node {
+    struct binding_vlist_node *next;
+    BINDING_PAIR pairs[1];
+} BINDING_VLIST_NODE;
+
+typedef struct binding_mark {
+    uint8_t size;
+    struct binding_mark *parent;
+} BINDING_MARK;
+
+#define SIZEOF_BINDING_VLIST_NODE(N) \
+    (sizeof(BINDING_VLIST_NODE) + sizeof(BINDING_PAIR) * ((N) - 1))
+
+typedef struct binding_vlist {
+    BINDING_MARK *marks;
+    BINDING_VLIST_NODE *root;
+    uint8_t size;
+} BINDING_VLIST;
+
+BINDING_VLIST *bind_new(MEM *m, CELL *symbol, CELL *value) {
+    BINDING_VLIST *bv = mem_bottomalloc(m, sizeof(BINDING_VLIST));
+    bv->size = 0;
+    bv->root = NULL;
+    bv->marks = NULL;
+    return bv;
+};
+
+void binding_push_mark(MEM *m, BINDING_VLIST *bv) {
+    BINDING_MARK *mark = mem_bottomalloc(m, sizeof(BINDING_MARK));
+    mark->size = bv->size;
+    mark->parent = bv->marks;
+    bv->marks = mark;
+}
+
+void binding_pop_mark(MEM *mem, BINDING_VLIST *bv) {
+    bv->size = bv->marks->size;
+    bv->marks = bv->marks->parent;
+}
+
+void bind(MEM *m, BINDING_VLIST *bv, CELL *symbol, CELL *value) {
+    uint8_t size_remaining = bv->size;
+    uint8_t node_size = 1;
+    BINDING_VLIST_NODE **node = &bv->root;
+    while (size_remaining > node_size) {
+        if (size_remaining > node_size) {
+            size_remaining -= node_size;
+            node_size = node_size << 1;
+            node = &(*node)->next;
+        }
+    }
+    if (*node == NULL) {
+        lassert(size_remaining == 0, BINDING_NODE_SIZE_REMAINING_NONZERO);
+        *node = mem_bottomalloc(m, SIZEOF_BINDING_VLIST_NODE(node_size));
+    } 
+    (*node)->pairs[size_remaining].symbol = symbol;
+    (*node)->pairs[size_remaining].value = value;
+    bv->size++;
+};
+/*  BINDING */
 
 typedef struct reader {
     void *getc_streamobj;
@@ -147,18 +385,17 @@ typedef struct reader {
     char ungetbuff[4];
 
     uint8_t ungetbuff_i : 2;
-    uint8_t state;
 
-    char *intbuff;
-    uint8_t pos;
+    MEM *mem;
 
-    ENVIRONMENT *e;
+    CELL *root;   
+
+    READER_STATE *state;
+    READER_STATE *unused_states;
+
+    BINDING_VLIST *bindings;
 } READER;
 
-typedef struct environment {
-    MEM *mem;
-    READER *reader;
-} ENVIRONMENT;
 
 static inline char reader_ungetc(READER *r, char c) {
     lassert(r->ungetbuff_i < sizeof(r->ungetbuff), READER_UNGETC_ERROR);
@@ -188,12 +425,10 @@ static inline char reader_peekc(READER *r) {
 static inline void reader_set_getc(
         READER *r,
         char (*getc)(void *),
-        //address_t (*getc_address)(void *),
         void *getc_streamobj) {
     r->getc = getc;
     r->getc_streamobj = getc_streamobj;
 }
-
 
 static inline void reader_set_putc(
         READER *r,
@@ -240,82 +475,202 @@ static inline char next_non_ws(READER *r) {
     return c;
 }
 
+READER *reader_new(MEM *m) {
+    READER *r = mem_bottomalloc(m, sizeof(READER));
 
-ENVIRONMENT *environment_new(MEM *m) {
-    ENVIRONMENT *e = (ENVIRONMENT*)mem_topalloc(m, sizeof(ENVIRONMENT));
-    e->mem = m;
-    return e;
+    r->ungetbuff_i = 0;
+
+    r->state = NULL;
+    r->unused_states = NULL;
+    return r;
 }
 enum {
-    STRING_OR_LIST,
-    STRING_DISPLAY, 
-    STRING_RAW_DECIMAL,     
-    STRING_TOKEN,
+    READING_STRING,
+    READING_INTEGER,
+    READING_ANYTHING,
 };
 
-void start_string_display(READER *r) {
-    r->state = STRING_DISPLAY;
-}
-void start_string_raw_decimal(READER *r) {
-    r->state = STRING_RAW_DECIMAL;
-    r->pos = 0;
-}
-void read_string_raw_decimal(READER *r, char c) {
-    r->intbuff[r->pos++] = c;
-}
-void start_string_token(READER *r) {
-    r->state = STRING_TOKEN;
-    MEM *m = r->environment->mem;
-    void *mem_toplock(m);
-}
-void read_string_token(READER *r, char c) {
-    // todo
+void reader_push_cell(READER *r) {
+    mem_topunlock(r->mem, r->mem->top);
+    r->state->cell = mem_topalloc(r->mem, sizeof(CELL));
+    mem_toplock(r->mem);
 }
 
+void reader_push_new_state(READER *reader) {
+    READER_STATE *state;
+    if (reader->unused_states) {
+        state = reader->unused_states;
+        reader->unused_states = state->parent;
+    } else {
+        state = mem_bottomalloc(reader->mem, sizeof(READER_STATE));
+    }
+    state->parent = reader->state;
+    state->parse_state = READING_ANYTHING;
+    reader->state = state;
+}
 
-READER *environment_read(ENVIRONMENT *e) {
-    READER *r = e->reader;
+void reader_pop_state(READER *r) {
+    // pops READER_STATE off current list and puts it back in unused.
+    READER_STATE *unused_state = r->state;
+    r->state = r->state->parent;
+    unused_state->parent = r->unused_states;
+    r->unused_states = unused_state;
+}
 
-    while (TRUE) {
-        char c = reader_getc(r);
-        switch (r->state) {
+void reader_string_start(READER *r) {
+    reader_push_new_state(r);
+    reader_push_cell(r);
+    
+    READER_STATE *state = r->state;
+    state->parse_state = READING_STRING;
+    state->first_char = '\0';
+    state->last_char = '\0';    
 
-        case STRING_OR_LIST:
-            if (c == '[') {
-                // <sexpr> -> <string> -> <display>
-                start_string_display(r);
-            } else if (c >= '0' && c <= '9') {
-                // <sexpr> -> <string> -> <simple-string> -> <raw> -> <decimal>
-                // <sexpr> -> <string> -> <simple-string> -> <token>
-                // <sexpr> -> <string> -> <simple-string> -> <base-64> -> <decimal>
-                start_string_raw_decimal(r);
-                read_string_raw_decimal(r, c);
-            } else if (is_alpha_decimal_simplepunc(c)) {
-                start_string_token(r);
-                read_string_raw_decimal
-            }
-        }
+    CELL *cell = state->cell;
+    cell->type = STRING;
+    cell->rev_str = mem_bottomlock(r->mem);
+    cell->length = 0;
+}
 
+void reader_string_read(READER *r, char c) {
+    // strings are read backwards
+    READER_STATE *state = r->state;
+    if (state->first_char == '\n') {
+        state->first_char = c;
+    }
+    state->last_char = c;
 
-        }
+    CELL *cell = state->cell;
+    *(--cell->rev_str) = c;
+    cell->length++;
+}
+
+CELL *eval_string(READER *r, CELL *cell) {
+    return cell;
+}
+
+CELL *reader_string_end(READER *r) {
+    // reverse the reverse-read string
+    char *start = r->state->cell->rev_str;
+    char *end = &start[r->state->cell->length-1];
+    while (start < end) {
+        char t = *start;
+        *start = *end;
+        *end = t;
+        start++;
+        end--;
+    }
+    
+    return eval_string(r, r->state->cell);
+
+    mem_bottomunlock(r->mem, r->state->cell->rev_str);
+}
+
+void reader_integer_start(READER *r) {
+    reader_push_new_state(r);
+    reader_push_cell(r);
+    r->state->cell->type = INTEGER;
+    r->state->parse_state = READING_INTEGER;
+    r->state->accumulator = 0;
+    r->state->sign = 1;
+}
+
+void reader_integer_read(READER *r, char c) {
+    if (c == '-' && r->state->accumulator == 0) {
+        r->state->sign = -1;
+    } else {
+        uint32_t accumulator = r->state->accumulator;
+        accumulator = (accumulator<<3) + (accumulator<<2);
+        accumulator += '0' - c;
+        r->state->accumulator = accumulator;
     }
 }
 
-READER *reader_init(READER *r) {
-    r->ungetbuff_i = 0;
-    r->state = 0;
-    return r;
+void reader_integer_end(READER *r) {
+    cell_integer_pack(r->state->cell, r->state->accumulator);
 }
 
-READER *reader_new(ENVIRONMENT *e) {
-    READER *r = (READER*)bistack_heapalloc(e->bs, sizeof(READER));
-    return reader_init(r);
-}
-bool_t reader_consume_comment(READER *reader);
-bool_t reader_read(READER *reader);
-bool_t reader_pprint(READER *reader);
-bool_t reader_put_missing(READER *reader);
 
+void reader_list_start(READER *r) {
+    r->state->parse_state = READING_ANYTHING;
+    
+    mem_topunlock(r->mem, r->mem->top);
+    r->state->cell = mem_topalloc(r->mem, sizeof(CELL));
+    mem_toplock(r->mem);
+    
+    r->state->cell->type = LIST;
+    r->state->cell->length = 0;
+    reader_push_new_state(r);
+}
+
+void reader_list_read_element(READER *r, CELL *c) {
+    reader_pop_state(r);
+}
+
+void reader_list_end(READER *r) {
+    //
+}
+
+void reader_read(READER *r) {   
+    while (TRUE) {
+        char c = reader_getc(r);
+        if (c == -1) {
+            break;
+        }
+
+        uint8_t parse_state;
+        if (r->state == NULL) {
+            parse_state = READING_ANYTHING;
+        } else {
+            parse_state = r->state->parse_state;
+        }
+
+        switch (parse_state) {
+        case READING_ANYTHING: {
+            if (c == '(') {
+                reader_list_start(r);
+            
+            } else if (c == ')') {
+                reader_list_end(r);
+
+            } else if (c == '-' || c == '+' || (c >= '0' && c <= '9')) {
+                reader_integer_start(r);
+                reader_integer_read(r, c);
+            
+            } else if (is_standard_char(c)) {
+                reader_string_start(r);
+                reader_string_read(r, c);
+            
+            } else {
+                printf("unknown list, integer or string char: %c\n", c);
+            }
+            break;
+        }
+        case READING_STRING: {
+            const char first_char = r->state->first_char;
+            const char prev_char = r->state->last_char;
+            const char is_escaped = prev_char == '\\';
+
+            if (!is_escaped && ((first_char == c) || is_whitespace(c))) {
+                reader_string_read(r, c);
+                reader_string_end(r);
+            } else {
+                reader_string_read(r, c);
+            } 
+            break;
+        }
+        case READING_INTEGER: 
+            if (is_whitespace(c)) {
+                reader_integer_end(r);
+            } else if (c >= '0' && c <= '9') {
+                reader_integer_read(r, c);
+            } else {
+                printf("unknown integer char: %c\n", c);
+            }
+            break;
+        }
+    }
+}
 
 
 //#define READER_MAIN_TEST
@@ -365,10 +720,8 @@ void sleep_15ms() {
 }
 
 int main(int argc, char **argv) {
-    BISTACK *bs = bistack_new(1<<18);
-    bistack_pushdir(bs, BS_BACKWARD);
-    ENVIRONMENT *environment = environment_new(bs);
-    READER *reader = reader_new(environment);
+    MEM *m = mem_malloc(16000);
+    READER *reader = reader_new(m);
 
     INPUT_STREAM is = {
         .reader=reader,
@@ -382,7 +735,7 @@ int main(int argc, char **argv) {
 
     int exctype = setjmp(__jmpbuff);
     if (exctype != 0) {
-        printf("\n *** %s\n", thrown_error_to_string(exctype));
+        printf("\n *** %d\n", exctype);
     }
 
     reader_init(reader);
@@ -409,18 +762,16 @@ int main(int argc, char **argv) {
 
 #else
 
-int mygetc(void *s) {
-    return getchar();
+char mygetc(void *s) {
+    return (char)getchar();
 }
 char myputc(void *streamobj, char c) {
     return putchar(c);
 }
 
 int main(int argc, char **argv) {
-    BISTACK *bs = (BISTACK*)malloc(32000);
-    bistack_init(bs, 32000);
-    ENVIRONMENT *e = environment_new(bs);
-    READER *r = reader_new(e);
+    MEM *m = (MEM*)malloc(32000);
+    READER *r = reader_new(m);
 
     reader_set_getc(r, mygetc, NULL);
     reader_set_putc(r, myputc, NULL);

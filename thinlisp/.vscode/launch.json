@@ -1,7 +1,19 @@
 {
     "version": "0.2.0",
     "configurations": [
-
+        {
+            "name": "main run",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceRoot}/bin/main",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceRoot}",
+            "environment": [],
+            "externalConsole": true,
+            "preLaunchTask": "compile main",
+            "MIMode": "lldb"
+        },
     {
         "name": "bistack test",
         "type": "cppdbg",

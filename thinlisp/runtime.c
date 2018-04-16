@@ -6,7 +6,6 @@
 
 jmp_buf __jmpbuff;
 
-
 void *mem_offset;
 
 void lerror(uint16_t exctype, char *err, ...) {
