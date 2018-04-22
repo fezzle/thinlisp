@@ -43,10 +43,8 @@ void dassert(uint16_t truefalse, uint16_t exctype, ...) {
 enum { INTEGER=0, BIGINTEGER=1, STRING=2, LIST=3 };
 enum {
     MEM_OUT_OF_IT=1,
-    MEM_TOP_LOCKED,
-    MEM_TOP_UNLOCKED,
-    MEM_BOTTOM_LOCKED,
-    MEM_BOTTOM_UNLOCKED,
+    MEM_LOCKED,
+    MEM_UNLOCKED,
 
     INTEGER_UNPACK_ON_INCORRECT_TYPE=10,
     BINDING_NODE_SIZE_REMAINING_NONZERO,
@@ -62,14 +60,10 @@ typedef struct mem {
     void *start;
     void *end;
 
-    void *top;
-    void **top_mark;
-
     void *bottom;
-    void **bottom_mark;
+    void **mark;
 
-    uint8_t top_locked:1;
-    uint8_t bottom_locked:1;
+    uint8_t locked:1;
 } MEM;
 
 MEM *mem_malloc(uint16_t size) {
@@ -77,75 +71,35 @@ MEM *mem_malloc(uint16_t size) {
     mem->start = mem + sizeof(MEM);
     mem->end = ((void*)mem) + size;
 
-    // top and bottom are 1ptr away from each end to make room for mark pointers
-    mem->top_mark = (void**)mem->start;
-    mem->top = mem->start + sizeof(void*);
-    *mem->top_mark = mem->top_mark;
-    mem->top_locked = FALSE;
-
-    mem->bottom_mark = (void**)(mem->end - sizeof(void*));
+    mem->mark = (void**)(mem->end - sizeof(void*));
     mem->bottom = mem->end - sizeof(void*);
-    *mem->bottom_mark = mem->bottom;
-    mem->bottom_locked = FALSE;
+    *mem->mark = mem->bottom;
+    mem->locked = FALSE;
 
     return mem;
 }
-void *mem_toplock(MEM *m) {
-    lassert(!m->top_locked, MEM_TOP_LOCKED);
-    m->top_locked = TRUE;
-    return m->top;
-}
-void mem_topunlock(MEM *m, void *new_top) {
-    lassert(m->top_locked, MEM_TOP_UNLOCKED);
-    lassert(new_top <= m->bottom, MEM_OUT_OF_IT);
-    m->top_locked = FALSE;
-    m->top = new_top;
-}
-void mem_topmark(MEM *m) {
-    lassert(!m->top_locked, MEM_TOP_LOCKED);
-    *((void**)m->top) = m->top_mark;
-    m->top_mark = &m->top;
-    m->top += sizeof(void *);
-}
-void *mem_topalloc(MEM *m, uint16_t size) {
-    lassert(!m->top_locked, MEM_TOP_LOCKED);
-    void *res = m->top;
-    m->top += size;
-    lassert(m->top <= m->bottom, MEM_OUT_OF_IT);
-    return res;
-}
-void mem_topfree(MEM *m) {
-    lassert(!m->top_locked, MEM_TOP_LOCKED);
-    m->top = &m->top_mark;
-    m->top_mark = *m->top_mark;
-}
-void *mem_bottomlock(MEM *m) {
-    lassert(!m->bottom_locked, MEM_BOTTOM_LOCKED);
-    m->bottom_locked = TRUE;
-    return m->bottom;
-}
-void mem_bottomunlock(MEM *m, void *new_bottom) {
-    lassert(m->bottom_locked, MEM_BOTTOM_UNLOCKED);
-    lassert(m->top <= new_bottom, MEM_OUT_OF_IT);
-    m->bottom_locked = FALSE;
+void mem_unlock(MEM *m, void *new_bottom) {
+    lassert(m->locked, MEM_UNLOCKED);
+    lassert(m->start <= new_bottom, MEM_OUT_OF_IT);
+    m->locked = FALSE;
     m->bottom = new_bottom;
 }
-void *mem_bottomalloc(MEM *m, uint16_t size) {
-    lassert(!m->bottom_locked, MEM_BOTTOM_LOCKED);
+void *mem_alloc(MEM *m, uint16_t size) {
+    lassert(!m->locked, MEM_LOCKED);
     m->bottom -= size;
-    lassert(m->top <= m->bottom, MEM_OUT_OF_IT);
+    lassert(m->start <= m->bottom, MEM_OUT_OF_IT);
     return m->bottom;
 }
-void mem_bottommark(MEM *m) {
-    lassert(!m->bottom_locked, MEM_BOTTOM_LOCKED);
+void mem_mark(MEM *m) {
+    lassert(!m->locked, MEM_LOCKED);
     m->bottom -= sizeof(void*);
-    *((void**)m->bottom) = m->bottom_mark;
-    m->bottom_mark = &m->bottom;
+    *((void**)m->bottom) = m->mark;
+    m->mark = &m->bottom;
 }
-void mem_bottomfree(MEM *m) {
-    lassert(!m->bottom_locked, MEM_BOTTOM_LOCKED);
-    m->bottom = m->bottom_mark + sizeof(void*);
-    m->bottom_mark = *m->bottom_mark;
+void mem_free(MEM *m) {
+    lassert(!m->locked, MEM_LOCKED);
+    m->bottom = m->mark + sizeof(void*);
+    m->mark = *m->mark;
 }
 
 typedef struct cell {
@@ -256,9 +210,24 @@ CELL *cond(MEM *m, CELL *list) {
     return FALSE;
 }
 
+CELL *iff(MEM * const mem, CELL * const list) {
+    if (is_true(eval(mem, list[1]))) {
+        return eval(mem, list[2]);
+    } else if (list->length == 4) {
+        return eval(mem, list[3]);
+    }
+}
 
-CELL *eq(MEM *mem, CELL *list) {
-    lassert(list->length = 3, INVALID_ARG_COUNT);
+CELL *let(MEM * const mem, CELL * const list) {
+    return NULL;
+}
+
+CELL *append(MEM * const mem, CELL * const list) {
+
+}
+
+CELL *eq(MEM * const mem, CELL * const list) {
+    lassert(list->length == 3, INVALID_ARG_COUNT);
     uint8_t remaining[MAX_RECURSION];
     uint8_t depth = 0;
 
@@ -628,7 +597,7 @@ void reader_list_end(READER *r) {
     //
 }
 
-void reader_read(READER *r) {
+void reader_read(READER &r) {
     while (TRUE) {
         char c = reader_getc(r);
         if (c == -1) {
