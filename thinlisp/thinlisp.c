@@ -11,6 +11,7 @@
 #include <setjmp.h>
 #include <stdint.h>
 #include <assert.h>
+#include <alloca.h>
 #include <stdio.h>
 
 #define PSTR(X) (X)
@@ -78,13 +79,13 @@ MEM *mem_malloc(uint16_t size) {
 
     return mem;
 }
-void mem_unlock(MEM *m, void *new_bottom) {
+void mem_unlock(MEM *const m, void *new_bottom) {
     lassert(m->locked, MEM_UNLOCKED);
     lassert(m->start <= new_bottom, MEM_OUT_OF_IT);
     m->locked = FALSE;
     m->bottom = new_bottom;
 }
-void *mem_alloc(MEM *m, uint16_t size) {
+void *mem_alloc(MEM *const m, uint16_t size) {
     lassert(!m->locked, MEM_LOCKED);
     m->bottom -= size;
     lassert(m->start <= m->bottom, MEM_OUT_OF_IT);
@@ -122,7 +123,7 @@ typedef struct cell {
     };
 } CELL;
 
-int32_t cell_integer_unpack(CELL *cell) {
+int32_t cell_integer_unpack(CELL *const cell) {
     dassert(cell->type == INTEGER, INTEGER_UNPACK_ON_INCORRECT_TYPE);
     int32_t res = (cell->length << 16) + cell->integer;
     if (cell->length & 0x20) {
@@ -130,7 +131,8 @@ int32_t cell_integer_unpack(CELL *cell) {
     }
     return res;
 }
-CELL *cell_integer_pack(CELL *cell, int32_t val) {
+
+CELL *cell_integer_pack(CELL *const cell, int32_t val) {
     if (val < 0) {
         val = -val;
     }
@@ -140,7 +142,7 @@ CELL *cell_integer_pack(CELL *cell, int32_t val) {
     return cell;
 }
 
-CELL *add(MEM *m, CELL *list) {
+CELL *add(MEM *const m, CELL *const list) {
     int32_t val = 0;
     for (uint8_t n=1; n<list->length; n++) {
         val += cell_integer_unpack(&list[n]);
@@ -149,7 +151,7 @@ CELL *add(MEM *m, CELL *list) {
     return cell_integer_pack(c, val);
 }
 
-CELL *subtract(MEM *m, CELL *list) {
+CELL *subtract(MEM *const m, CELL *const list) {
     CELL *c = mem_bottomalloc(m, sizeof(CELL));
     int32_t val = 0;
     if (list->length >= 1) {
@@ -161,7 +163,7 @@ CELL *subtract(MEM *m, CELL *list) {
     return cell_integer_pack(c, val);
 }
 
-CELL *defn(MEM *m, CELL *list) {
+CELL *defn(MEM *const m, CELL *list) {
     CELL *symbol = &list[1];
     uint8_t argcount = list[2].length;
     return list;
@@ -197,7 +199,7 @@ CELL *next_cell(CELL *cell) {
 }
 
 
-CELL *cond(MEM *m, CELL *list) {
+CELL *cond(MEM *const m, CELL *const list) {
     CELL *cond_counter = list_first(list);
     for (uint8_t n=1; n<list->length; n++) {
         CELL *predicate = eval(m, cond_counter);
@@ -210,7 +212,7 @@ CELL *cond(MEM *m, CELL *list) {
     return FALSE;
 }
 
-CELL *iff(MEM * const mem, CELL * const list) {
+CELL *iff(MEM *const mem, CELL *const list) {
     if (is_true(eval(mem, list[1]))) {
         return eval(mem, list[2]);
     } else if (list->length == 4) {
@@ -218,15 +220,15 @@ CELL *iff(MEM * const mem, CELL * const list) {
     }
 }
 
-CELL *let(MEM * const mem, CELL * const list) {
+CELL *let(MEM *const mem, CELL *const list) {
     return NULL;
 }
 
-CELL *append(MEM * const mem, CELL * const list) {
+CELL *append(MEM *const mem, CELL *const list) {
 
 }
 
-CELL *eq(MEM * const mem, CELL * const list) {
+CELL *eq(MEM *const mem, CELL *const list) {
     lassert(list->length == 3, INVALID_ARG_COUNT);
     uint8_t remaining[MAX_RECURSION];
     uint8_t depth = 0;
@@ -260,7 +262,7 @@ CELL *eq(MEM * const mem, CELL * const list) {
 enum modifier {
     QUOTE, LAZY_EVAL,
 };
-typedef CELL* (*builtin_fn)(MEM *m, CELL *list);
+typedef CELL* (*builtin_fn)(MEM *const m, CELL *list);
 typedef struct builtin_binding {
     builtin_fn fn;
     uint8_t modifier:2;
@@ -320,7 +322,7 @@ typedef struct binding_vlist {
     uint8_t size;
 } BINDING_VLIST;
 
-BINDING_VLIST *bind_new(MEM *m, CELL *symbol, CELL *value) {
+BINDING_VLIST *bind_new(MEM *const m, CELL *symbol, CELL *const value) {
     BINDING_VLIST *bv = mem_bottomalloc(m, sizeof(BINDING_VLIST));
     bv->size = 0;
     bv->root = NULL;
@@ -328,7 +330,7 @@ BINDING_VLIST *bind_new(MEM *m, CELL *symbol, CELL *value) {
     return bv;
 };
 
-void binding_push_mark(MEM *m, BINDING_VLIST *bv) {
+void binding_push_mark(MEM *const m, BINDING_VLIST *const bv) {
     BINDING_MARK *mark = mem_bottomalloc(m, sizeof(BINDING_MARK));
     mark->size = bv->size;
     mark->parent = bv->marks;
@@ -340,7 +342,7 @@ void binding_pop_mark(MEM *mem, BINDING_VLIST *bv) {
     bv->marks = bv->marks->parent;
 }
 
-void bind(MEM *m, BINDING_VLIST *bv, CELL *symbol, CELL *value) {
+void bind(MEM *const m, BINDING_VLIST *const bv, CELL *const symbol, CELL *const value) {
     uint8_t size_remaining = bv->size;
     uint8_t node_size = 1;
     BINDING_VLIST_NODE **node = &bv->root;
@@ -383,13 +385,13 @@ typedef struct reader {
 } READER;
 
 
-static inline char reader_ungetc(READER *r, char c) {
+static inline char reader_ungetc(READER *const r, const char c) {
     lassert(r->ungetbuff_i < sizeof(r->ungetbuff), READER_UNGETC_ERROR);
     r->ungetbuff[r->ungetbuff_i++] = c;
     return c;
 }
 
-static inline char reader_getc(READER *r) {
+static inline char reader_getc(READER *const r) {
     char c;
     if (r->ungetbuff_i) {
         c = r->ungetbuff[--r->ungetbuff_i];
@@ -399,7 +401,7 @@ static inline char reader_getc(READER *r) {
     return c;
 }
 
-static inline char reader_peekc(READER *r) {
+static inline char reader_peekc(READER *const r) {
     if (r->ungetbuff_i) {
         return r->ungetbuff[r->ungetbuff_i-1];
     } else {
@@ -409,7 +411,7 @@ static inline char reader_peekc(READER *r) {
 }
 
 static inline void reader_set_getc(
-        READER *r,
+        READER *const r,
         char (*getc)(void *),
         void *getc_streamobj) {
     r->getc = getc;
@@ -417,36 +419,36 @@ static inline void reader_set_getc(
 }
 
 static inline void reader_set_putc(
-        READER *r,
+        READER *const r,
         char (*putc)(void *, char),
         void *putc_streamobj) {
     r->putc = putc;
     r->putc_streamobj = putc_streamobj;
 }
 
-static inline char reader_putc(READER *r, char c) {
+static inline char reader_putc(READER *const r, const char c) {
     return r->putc(r->putc_streamobj, c);
 }
 
-static inline char is_whitespace(char c) {
+static inline char is_whitespace(const char c) {
     return c == '\n' || c == ' ' || c == '\t';
 }
 
-static inline char is_alpha(char c) {
+static inline char is_alpha(const char c) {
     return (('A' <= c && c <= 'Z') ||
             ('a' <= c && c <= 'z') ||
             ('0' <= c && c <= '9'));
 }
 
-static inline char is_standard_char(char c) {
+static inline char is_standard_char(const char c) {
     return c >= '!' && c <= '~';
 }
 
-static inline char is_non_symbol(char c) {
+static inline char is_non_symbol(const char c) {
     return c != '\n' && c != '\t' && c != ' ' && c != ')' && c != '(';
 }
 
-static inline char next_non_ws(READER *r) {
+static inline char next_non_ws(READER *const r) {
     /*
     * reads characters until a non-whitespace character is found.
     */
@@ -461,7 +463,7 @@ static inline char next_non_ws(READER *r) {
     return c;
 }
 
-READER *reader_new(MEM *m) {
+READER *reader_new(MEM *const m) {
     READER *r = mem_bottomalloc(m, sizeof(READER));
 
     r->ungetbuff_i = 0;
@@ -477,9 +479,7 @@ enum {
 };
 
 void reader_push_cell(READER *r) {
-    mem_topunlock(r->mem, r->mem->top);
     r->state->cell = mem_topalloc(r->mem, sizeof(CELL));
-    mem_toplock(r->mem);
 }
 
 void reader_push_new_state(READER *reader) {
@@ -589,15 +589,15 @@ void reader_list_start(READER *r) {
     reader_push_new_state(r);
 }
 
-void reader_list_read_element(READER *r, CELL *c) {
+void reader_list_read_element(READER *const r, CELL *c) {
     reader_pop_state(r);
 }
 
-void reader_list_end(READER *r) {
+void reader_list_end(READER *const r) {
     //
 }
 
-void reader_read(READER &r) {
+void reader_read(READER *const r) {
     while (TRUE) {
         char c = reader_getc(r);
         if (c == -1) {
