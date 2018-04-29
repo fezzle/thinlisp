@@ -41,6 +41,7 @@ void dassert(uint16_t truefalse, uint16_t exctype, ...) {
 #endif
 }
 
+#define CELL_LIST_NODE_COUNT 3
 enum { INTEGER=0, BIGINTEGER=1, STRING=2, LIST=3 };
 enum {
     MEM_OUT_OF_IT=1,
@@ -51,6 +52,11 @@ enum {
     BINDING_NODE_SIZE_REMAINING_NONZERO,
     RECURSION_DEPTH_EXCEEDED,
     LIST_FIRST_DIDNT_GET_LIST,
+    LIST_APPEND_TO_NOT_LIST,
+    LIST_APPEND_LIST_CELL_BADSTATE,
+    LIST_NTH_OUT_OF_BOUNDS,
+    BIND_NOT_LIST,
+    BIND_SYMBOL_LIST_ODD_LENGTH,
 
     READER_UNGETC_ERROR=20,
 
@@ -103,6 +109,7 @@ void mem_free(MEM *m) {
     m->mark = *m->mark;
 }
 
+typedef struct cell_list_node CELL_LIST_NODE;
 typedef struct cell {
     uint8_t type:2;
     uint8_t length:6;
@@ -118,10 +125,84 @@ typedef struct cell {
             uint16_t integer;
         };
         struct {
-            uint16_t list_modifiers;
+            CELL_LIST_NODE *list_node;
         };
     };
 } CELL;
+
+typedef struct cell_list_node {
+    union {
+        struct {
+            CELL *cell1a;
+            CELL *cell2a;
+            CELL *last_cell;
+        };
+        struct {
+            CELL *symbol;
+            CELL *value;
+            CELL_LIST_NODE *next;
+        };
+        struct {
+            CELL *cells[CELL_LIST_NODE_COUNT];
+        };
+    };
+} CELL_LIST_NODE;
+
+CELL *list_append(MEM *m, CELL *l, CELL *c) {
+    dassert(l->type == LIST, LIST_APPEND_TO_NOT_LIST);
+    if (c->list_node == NULL) {
+        c->list_node = mem_alloc(m, sizeof(CELL_LIST_NODE));
+    }
+    CELL_LIST_NODE *itr = c->list_node;
+    uint8_t len = c->length;
+    while (TRUE) {
+        if (len > CELL_LIST_NODE_COUNT) {
+            len = len - (CELL_LIST_NODE_COUNT - 1);
+            itr = itr->next;
+        } else if (len == CELL_LIST_NODE_COUNT) {
+            // must allocate a new one and move last cell in current forward
+            //  so `next` can be used
+            CELL *t = itr->last_cell;
+            itr->next = mem_alloc(m, sizeof(CELL_LIST_NODE));
+            itr = itr->next;
+            itr->cells[0] = t;
+            itr->cells[1] = c;
+            break;
+        } else {
+            itr->cells[len] = c;
+        }
+    }
+    c->length++;
+    return l;
+}
+
+CELL *list_nth(MEM *m, CELL *l, uint8_t n) {
+    dassert(n < l->length, LIST_NTH_OUT_OF_BOUNDS);
+    uint8_t len = n;
+    CELL_LIST_NODE *itr = l->list_node;
+    while (TRUE) {
+        if (len > CELL_LIST_NODE_COUNT) {
+            len = len - (CELL_LIST_NODE_COUNT - 1);
+            itr = itr->next;
+        } else {
+            return itr->cells[len];
+        }
+    }
+}
+
+CELL *bind(
+        MEM *const m,
+        CELL *const symbol_list,
+        CELL *const symbol,
+        CELL *const value) {
+    dassert(symbol_list->type == LIST, BIND_NOT_LIST);
+    dassert((symbol_list->length & 1) == 0, BIND_SYMBOL_LIST_ODD_LENGTH);
+    CELL_LIST_NODE *new_bind = mem_alloc(m, sizeof(CELL_LIST_NODE));
+    new_bind->next = symbol_list->list_node;
+    symbol_list->list_node = new_bind;
+    symbol_list->length += 2;
+    return symbol_list;
+}
 
 int32_t cell_integer_unpack(CELL *const cell) {
     dassert(cell->type == INTEGER, INTEGER_UNPACK_ON_INCORRECT_TYPE);
@@ -142,25 +223,23 @@ CELL *cell_integer_pack(CELL *const cell, int32_t val) {
     return cell;
 }
 
-CELL *add(MEM *const m, CELL *const list) {
+CELL *add(MEM *const m, CELL *const target, CELL *const list) {
     int32_t val = 0;
     for (uint8_t n=1; n<list->length; n++) {
         val += cell_integer_unpack(&list[n]);
     }
-    CELL *c = mem_bottomalloc(m, sizeof(CELL));
-    return cell_integer_pack(c, val);
+    return cell_integer_pack(target, val);
 }
 
-CELL *subtract(MEM *const m, CELL *const list) {
-    CELL *c = mem_bottomalloc(m, sizeof(CELL));
+CELL *subtract(MEM *const m, CELL *const target, CELL *const list) {
     int32_t val = 0;
     if (list->length >= 1) {
-        val = cell_integer_unpack(&list[1]);
+        val = cell_integer_unpack(list_nth(list, 1));
     }
     for (uint8_t n=2; n<list->length; n++) {
-        val -= cell_integer_unpack(&list[n]);
+        val -= cell_integer_unpack(list_nth(list, n));
     }
-    return cell_integer_pack(c, val);
+    return cell_integer_pack(target, val);
 }
 
 CELL *defn(MEM *const m, CELL *list) {
