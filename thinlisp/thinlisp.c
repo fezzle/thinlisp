@@ -13,65 +13,7 @@
 #include <assert.h>
 #include <alloca.h>
 #include <stdio.h>
-
-#define PSTR(X) (X)
-#define DEBUG 1
-#define TRUE (1)
-#define FALSE (0)
-#define MAX_RECURSION 8
-
-jmp_buf __jmpbuff;
-
-void lerror(uint16_t exctype, char *err, ...) {
-  longjmp(__jmpbuff, exctype);
-}
-
-
-void lassert(uint16_t truefalse, uint16_t exctype, ...) {
-    if (!truefalse) {
-        lerror(exctype, PSTR("ASSERTION FAILED"));
-    }
-}
-
-void dassert(uint16_t truefalse, uint16_t exctype, ...) {
-#ifdef DEBUG
-    if (!truefalse) {
-        lerror(exctype, PSTR("DEBUG ASSERTION FAILED"));
-    }
-#endif
-}
-
-#define CELL_LIST_NODE_COUNT 3
-enum { INTEGER=0, BIGINTEGER=1, STRING=2, LIST=3 };
-enum {
-    MEM_OUT_OF_IT=1,
-    MEM_LOCKED,
-    MEM_UNLOCKED,
-
-    INTEGER_UNPACK_ON_INCORRECT_TYPE=10,
-    BINDING_NODE_SIZE_REMAINING_NONZERO,
-    RECURSION_DEPTH_EXCEEDED,
-    LIST_FIRST_DIDNT_GET_LIST,
-    LIST_APPEND_TO_NOT_LIST,
-    LIST_APPEND_LIST_CELL_BADSTATE,
-    LIST_NTH_OUT_OF_BOUNDS,
-    BIND_NOT_LIST,
-    BIND_SYMBOL_LIST_ODD_LENGTH,
-
-    READER_UNGETC_ERROR=20,
-
-    INVALID_ARG_COUNT=40,
-};
-
-typedef struct mem {
-    void *start;
-    void *end;
-
-    void *bottom;
-    void **mark;
-
-    uint8_t locked:1;
-} MEM;
+#include "thinlisp.h"
 
 MEM *mem_malloc(uint16_t size) {
     MEM *mem = malloc(size);
@@ -127,14 +69,17 @@ typedef struct cell {
         struct {
             CELL_LIST_NODE *list_node;
         };
+        struct {
+            struct cell *next;
+        };
     };
 } CELL;
 
 typedef struct cell_list_node {
     union {
         struct {
-            CELL *cell1a;
-            CELL *cell2a;
+            CELL *cell0;
+            CELL *cell1;
             CELL *last_cell;
         };
         struct {
@@ -145,6 +90,13 @@ typedef struct cell_list_node {
         struct {
             CELL *cells[CELL_LIST_NODE_COUNT];
         };
+        struct {
+            CELL_LIST_NODE *trie_cells_with_next[CELL_LIST_NODE_COUNT - 1];
+            CELL_LIST_NODE *trie_next;
+        };
+        struct {
+            CELL_LIST_NODE *trie_cells[3];
+        };
     };
 } CELL_LIST_NODE;
 
@@ -154,12 +106,12 @@ CELL *list_append(MEM *m, CELL *l, CELL *c) {
         c->list_node = mem_alloc(m, sizeof(CELL_LIST_NODE));
     }
     CELL_LIST_NODE *itr = c->list_node;
-    uint8_t len = c->length;
+    uint8_t length_remaining = c->length;
     while (TRUE) {
-        if (len > CELL_LIST_NODE_COUNT) {
-            len = len - (CELL_LIST_NODE_COUNT - 1);
+        if (length_remaining > CELL_LIST_NODE_COUNT) {
+            length_remaining = length_remaining - (CELL_LIST_NODE_COUNT - 1);
             itr = itr->next;
-        } else if (len == CELL_LIST_NODE_COUNT) {
+        } else if (length_remaining == CELL_LIST_NODE_COUNT) {
             // must allocate a new one and move last cell in current forward
             //  so `next` can be used
             CELL *t = itr->last_cell;
@@ -169,7 +121,7 @@ CELL *list_append(MEM *m, CELL *l, CELL *c) {
             itr->cells[1] = c;
             break;
         } else {
-            itr->cells[len] = c;
+            itr->cells[length_remaining - 1] = c;
         }
     }
     c->length++;
@@ -178,14 +130,47 @@ CELL *list_append(MEM *m, CELL *l, CELL *c) {
 
 CELL *list_nth(MEM *m, CELL *l, uint8_t n) {
     dassert(n < l->length, LIST_NTH_OUT_OF_BOUNDS);
-    uint8_t len = n;
+    uint8_t length_remaining = n;
     CELL_LIST_NODE *itr = l->list_node;
     while (TRUE) {
-        if (len > CELL_LIST_NODE_COUNT) {
-            len = len - (CELL_LIST_NODE_COUNT - 1);
+        if (length_remaining > CELL_LIST_NODE_COUNT) {
+            length_remaining = length_remaining - (CELL_LIST_NODE_COUNT - 1);
             itr = itr->next;
         } else {
-            return itr->cells[len];
+            return itr->cells[length_remaining - 1];
+        }
+    }
+}
+
+CELL *list_slice(MEM *m, CELL *l, uint8_t start, uint8_t end) {
+    dassert(end < l->length, LIST_NTH_OUT_OF_BOUNDS);
+    
+    CELL *new_list = mem_alloc(m, sizeof(CELL));
+    new_list->type = LIST;
+    new_list->length = end - start;
+    if (new_list->length == 0) {
+        return new_list;
+    }
+    new_list->list_node = mem_alloc(m, sizeof(CELL_LIST_NODE));
+            
+    uint8_t length_remaining = start;
+    CELL_LIST_NODE *itr = l->list_node;
+    while (TRUE) {
+        if (length_remaining > CELL_LIST_NODE_COUNT) {
+            length_remaining = length_remaining - (CELL_LIST_NODE_COUNT - 1);
+            itr = itr->next;
+        } else {
+            if (length_remaining == 1) {
+                new_list->list_node->cells[0] = itr->cells[length_remaining - 1];
+                new_list->list_node->cells[1] = itr->cells[length_remaining];
+                new_list->list_node->next = itr->next;
+            } else if (length_remaining == 2) {
+                new_list->list_node->cells[0] = NULL;
+                new_list->list_node->cells[1] = itr->cells[length_remaining];
+                new_list->list_node->next = itr->next;
+            } else if (length_remaining == 3) {
+                new_list->list_node->cells[0] = NULL;
+            }
         }
     }
 }
@@ -357,6 +342,7 @@ typedef struct builtin_binding {
     { .fn = let, .modifier = QUOTE, .symbol = "let"},
     { .fn = append, .modifier = 0, .symbol = "append"},
 };
+
 #define BUILTIN_COUNT (sizeof(BUILTIN_BINDINGS) / sizeof(struct builtin_binding))
 
 typedef struct reader_state {
@@ -456,6 +442,7 @@ typedef struct reader {
     MEM *mem;
 
     CELL *root;
+    CELL *cell_free_list;
 
     READER_STATE *state;
     READER_STATE *unused_states;
@@ -557,9 +544,6 @@ enum {
     READING_ANYTHING,
 };
 
-void reader_push_cell(READER *r) {
-    r->state->cell = mem_topalloc(r->mem, sizeof(CELL));
-}
 
 void reader_push_new_state(READER *reader) {
     READER_STATE *state;
@@ -659,13 +643,10 @@ void reader_integer_end(READER *r) {
 void reader_list_start(READER *r) {
     r->state->parse_state = READING_ANYTHING;
 
-    mem_topunlock(r->mem, r->mem->top);
-    r->state->cell = mem_topalloc(r->mem, sizeof(CELL));
-    mem_toplock(r->mem);
-
+    r->state->cell = reader_get_temp_cell(r->mem, sizeof(CELL));
+    
     r->state->cell->type = LIST;
     r->state->cell->length = 0;
-    reader_push_new_state(r);
 }
 
 void reader_list_read_element(READER *const r, CELL *c) {
@@ -674,6 +655,23 @@ void reader_list_read_element(READER *const r, CELL *c) {
 
 void reader_list_end(READER *const r) {
     //
+}
+
+CELL *reader_get_temp_cell(READER *const r) {
+    if (r->cell_free_list == NULL) {
+        CELL *c = mem_alloc(r->mem, sizeof(CELL));
+        return c;
+    } else {
+        CELL *c = r->cell_free_list;
+        r->cell_free_list = r->cell_free_list->next;
+        return c;
+    }
+}
+
+CELL *reader_free_temp_cell(READER *const r, CELL *const c) {
+    c->next = r->cell_free_list;
+    r->cell_free_list = c;
+    return c; 
 }
 
 void reader_read(READER *const r) {
