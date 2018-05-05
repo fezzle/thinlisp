@@ -14,9 +14,13 @@
         "runtime.h": "c",
         "list.h": "c",
         "unistd.h": "c",
-        "setjmp.h": "c"
+        "setjmp.h": "c",
+        "*.c": "c",
+        "*.h": "c"
     },
     "editor.tabSize": 4,
     "editor.detectIndentation": false,
-    "editor.rulers": [80]
+    "editor.rulers": [80],
+    "editor.formatOnType": true,
+    "C_Cpp.clang_format_path": "/usr/local/bin/clang-format"
 }

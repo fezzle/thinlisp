@@ -131,34 +131,7 @@ typedef struct cell_list_node {
 
 typedef CELL* (*builtin_fn)(MEM *const m, CELL *list);
 
-builtin_fn add;
-builtin_fn subtract;
-builtin_fn eq;
-builtin_fn defn;
-builtin_fn cond;
-builtin_fn iff;
-builtin_fn let;
-builtin_fn append;
 
-enum modifier {
-    QUOTE, LAZY_EVAL,
-};
-
-typedef struct builtin_binding {
-    builtin_fn fn;
-    uint8_t modifier:2;
-    uint8_t symbol_length:6;
-    char *symbol;
-} BUILTIN_BINDINGS[] = {
-    { .fn = add, .modifier = 0, .symbol = "+" },
-    { .fn = subtract, .modifier = 0, .symbol = "-"},
-    { .fn = eq, .modifier = 0, .symbol = "="},
-    { .fn = defn, .modifier = QUOTE, .symbol_length .symbol = "defn"},
-    { .fn = cond, .modifier = LAZY_EVAL, .symbol_length = 4, .symbol = "cond"},
-    { .fn = iff, .modifier = LAZY_EVAL, .symbol_length = 3, .symbol = "if"},
-    { .fn = let, .modifier = QUOTE, .symbol_length = 3, .symbol = "let"},
-    { .fn = append, .modifier = 0, .symbol_length = 6, .symbol = "append"},
-};
 
 builtin_fn builtin_fn_lookup(CELL *const symbol) {
     dassert(symbol->type == STRING, SYMBOL_EVAL_NOT_STRING);
