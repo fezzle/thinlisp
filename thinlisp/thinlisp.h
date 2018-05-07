@@ -6,7 +6,6 @@
 #include <setjmp.h>
 #include <stdint.h>
 #include <assert.h>
-#include <alloca.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -48,8 +47,10 @@ enum {
     MEM_OUT_OF_IT=1,
     MEM_LOCKED,
     MEM_UNLOCKED,
+    MEM_NOT_TWO_BYTE_ALIGNED,
 
     INTEGER_UNPACK_ON_INCORRECT_TYPE=10,
+    BUILTIN_HASH_COLLISION,
     BINDING_NODE_SIZE_REMAINING_NONZERO,
     RECURSION_DEPTH_EXCEEDED,
     LIST_FIRST_DIDNT_GET_LIST,
@@ -64,6 +65,12 @@ enum {
     INVALID_ARG_COUNT=40,
 
     SYMBOL_EVAL_NOT_STRING=50,
+
+    LENGTH_INVALID_NUMBER_OF_ARGUMENTS,
+    LENGTH_FIRST_ARG_MUST_BE_LIST,
+    MAP_INVALID_NUMBER_OF_ARGUMENTS,
+    MAP_FIRST_ARG_MUST_BE_EXPR,
+    MAP_SECOND_ARG_MUST_BE_LIST,
 };
 
 typedef struct mem {
@@ -76,103 +83,52 @@ typedef struct mem {
     uint8_t locked:1;
 } MEM;
 
-
-
-
-typedef struct cell_list_node CELL_LIST_NODE;
 typedef struct cell {
-    uint8_t type:2;
-    uint8_t length:6;
     union {
         struct {
-            union {
-                // strings are read backwards, then switched to forwards.
-                char *rev_str;
-                char *str;
-            };
+            uint32_t type:2;
+            uint32_t length:6;
+            uint32_t hash:4;
+            uint32_t str_ptr:10;
+            uint32_t next_ptr:10;
         };
         struct {
-            uint16_t integer;
+            uint32_t int_type:2;
+            uint32_t int_val:20;  
+            uint32_t int_next_ptr:10;
         };
         struct {
-            CELL_LIST_NODE *list_node;
+            uint32_t list_type:2;
+            uint32_t list_tail_ptr:10;
+            uint32_t list_head_ptr:10;
+            uint32_t list_next_ptr:10;
         };
         struct {
-            struct cell *next;
+            uint32_t pair_type:2;
+            uint32_t pair_first:10;
+            uint32_t pair_second:10;
+            uint32_t pair_next_ptr:10;            
         };
     };
 } CELL;
 
-typedef struct cell_list_node {
-    union {
-        struct {
-            CELL *cell0;
-            CELL *cell1;
-            CELL *last_cell;
-        };
-        struct {
-            CELL *symbol;
-            CELL *value;
-            CELL_LIST_NODE *next;
-        };
-        struct {
-            CELL *cells[CELL_LIST_NODE_COUNT];
-        };
-        struct {
-            CELL_LIST_NODE *trie_cells_with_next[CELL_LIST_NODE_COUNT - 1];
-            CELL_LIST_NODE *trie_next;
-        };
-        struct {
-            CELL_LIST_NODE *trie_cells[3];
-        };
-    };
-} CELL_LIST_NODE;
+CELL *unpack_ptr(MEM *const m, uint16_t ptr) {
+    if (ptr == 0) {
+        return NULL;
+    }
+    return (void*)((ptrdiff_t)m->end - (2<<10) + (ptr << 1));
+}
 
+uint16_t pack_ptr(MEM *const m, CELL *const ptr) {
+    lassert(((ptrdiff_t)ptr & 1) == 0, MEM_NOT_TWO_BYTE_ALIGNED);
+    if (ptr == NULL) {
+        return 0;
+    }
+    return (uint16_t)(((ptrdiff_t)ptr - ((ptrdiff_t)m->end - (2<<10))) >> 1);
+}
 
 typedef CELL* (*builtin_fn)(MEM *const m, CELL *list);
 
-
-
-builtin_fn builtin_fn_lookup(CELL *const symbol) {
-    dassert(symbol->type == STRING, SYMBOL_EVAL_NOT_STRING);
-    switch(symbol->length) {
-        case 1:
-            const char c = symbol->str[0];
-            if (c == '+') {
-                return add;
-            } else if (c == '-') {
-                return subtract;
-            } else if (c == '=') {
-                return eq;
-            }
-            break;
-        case 2:
-            const char c0 = symbol->str[0];
-            const char c1 = symbol->str[1];
-            if (c0 == 'i' && c1 == 'q') {
-                return iff;
-            } else if (c0 == 'e' && c1 == 'q') {
-                return iff;
-            }
-            break;
-        default:
-            char *const str = symbol->str;
-            const uint8_t len = symbol->length;
-            if (strncmp(str, PSTR("defn"), len) == 0) {
-                return defn;
-            } else if (strncmp(str, PSTR("cond"), len) == 0) {
-                return cond;
-            } else if (strncmp(str, "let", len) == 0) {
-                return let;
-            }
-            break;
-    }
-    return NULL;
-}
-
-
-#define FN_BUILTIN_COUNT \
-    (sizeof(BUILTIN_BINDINGS) / sizeof(struct builtin_binding))
 
 typedef struct reader_state {
     uint8_t parse_state;
@@ -191,21 +147,48 @@ typedef struct reader_state {
     struct reader_state *parent;
 } READER_STATE;
 
+
+typedef struct reader {
+    void *getc_streamobj;
+    char (*getc)(void *getc_streamobj);
+
+    void *putc_streamobj;
+    char (*putc)(void *putc_streamobj, char c);
+
+    char ungetbuff[4];
+
+    uint8_t ungetbuff_i : 2;
+
+    MEM *mem;
+
+    CELL *root;
+    CELL *cell_free_list;
+
+    READER_STATE *state;
+    READER_STATE *unused_states;
+
+    BINDING_VLIST *bindings;
+} READER;
+
+
  /* BINDINGS */
 typedef struct binding_pair {
     CELL *symbol;
     CELL *value;
 } BINDING_PAIR;
 
+
 typedef struct binding_vlist_node {
     struct binding_vlist_node *next;
     BINDING_PAIR pairs[1];
 } BINDING_VLIST_NODE;
 
+
 typedef struct binding_mark {
     uint8_t size;
     struct binding_mark *parent;
 } BINDING_MARK;
+
 
 #define SIZEOF_BINDING_VLIST_NODE(N) \
     (sizeof(BINDING_VLIST_NODE) + sizeof(BINDING_PAIR) * ((N) - 1))
@@ -226,7 +209,5 @@ typedef struct symbol_binding_frame {
     SYMBOL_BINDING *symbol_binding;
     struct symbol_binding_frame *next;  
 } SYMBOL_BINDING_FRAME;
-
-
 
 #endif

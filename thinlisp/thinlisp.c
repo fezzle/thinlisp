@@ -6,6 +6,8 @@
 //  Copyright © 2016 norg. All rights reserved.
 //
 
+#define WINDOWS
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <setjmp.h>
@@ -13,16 +15,82 @@
 #include <assert.h>
 #include <alloca.h>
 #include <stdio.h>
+<<<<<<< Updated upstream
 #include "thinlisp.h"
+=======
+#ifdef WINDOWS
+    #include <malloc.h>
+    #define alloca _alloca
+#else
+    #include <alloca.h>
+#endif
+
+#define PSTR(X) (X)
+#define DEBUG 1
+#define TRUE (1)
+#define FALSE (0)
+#define MAX_RECURSION 8
+#define VLIST_NODE_INITIAL_SIZE (2)
+
+
+jmp_buf __jmpbuff;
+
+void lerror(uint16_t exctype, char *err, ...) {
+  longjmp(__jmpbuff, exctype);
+}
+
+
+void lassert(uint16_t truefalse, uint16_t exctype, ...) {
+    if (!truefalse) {
+        lerror(exctype, PSTR("ASSERTION FAILED"));
+    }
+}
+
+void dassert(uint16_t truefalse, uint16_t exctype, ...) {
+#ifdef DEBUG
+    if (!truefalse) {
+        lerror(exctype, PSTR("DEBUG ASSERTION FAILED"));
+    }
+#endif
+}
+
+enum { INTEGER=0, BIGINTEGER=1, STRING=2, LIST=3 };
+enum {
+    MEM_OUT_OF_IT=1,
+    MEM_LOCKED,
+    MEM_UNLOCKED,
+
+    INTEGER_UNPACK_ON_INCORRECT_TYPE=10,
+    BINDING_NODE_SIZE_REMAINING_NONZERO,
+    RECURSION_DEPTH_EXCEEDED,
+    LIST_FIRST_DIDNT_GET_LIST,
+    VLIST_INDEX_OUT_OF_BOUNDS,
+
+    READER_UNGETC_ERROR=20,
+
+    INVALID_ARG_COUNT=40,
+};
+
+typedef struct mem {
+    void *start;
+    void *end;
+
+    void *bottom;
+    void **mark;
+
+    uint8_t locked:1;
+} MEM;
+>>>>>>> Stashed changes
 
 MEM *mem_malloc(uint16_t size) {
     MEM *mem = malloc(size);
     mem->start = mem + sizeof(MEM);
-    mem->end = ((void*)mem) + size;
+    mem->end = ((char*)mem) + size;
 
-    mem->mark = (void**)(mem->end - sizeof(void*));
-    mem->bottom = mem->end - sizeof(void*);
-    *mem->mark = mem->bottom;
+    // set last bottom mark to NULL
+    mem->bottom = ((char*)mem->end)[-sizeof(void*)];
+    mem->mark = mem->bottom; 
+    *mem->mark = NULL; //mem->bottom;
     mem->locked = FALSE;
 
     return mem;
@@ -35,23 +103,31 @@ void mem_unlock(MEM *const m, void *new_bottom) {
 }
 void *mem_alloc(MEM *const m, uint16_t size) {
     lassert(!m->locked, MEM_LOCKED);
-    m->bottom -= size;
+    m->bottom = &((char*)m->bottom)[-size];
     lassert(m->start <= m->bottom, MEM_OUT_OF_IT);
     return m->bottom;
 }
-void mem_mark(MEM *m) {
+void mem_mark(MEM *const m) {
     lassert(!m->locked, MEM_LOCKED);
-    m->bottom -= sizeof(void*);
+    m->bottom = &((char*)m->bottom)[-sizeof(void*)];
     *((void**)m->bottom) = m->mark;
     m->mark = &m->bottom;
 }
-void mem_free(MEM *m) {
+void mem_rewind(MEM *const m) {
     lassert(!m->locked, MEM_LOCKED);
-    m->bottom = m->mark + sizeof(void*);
     m->mark = *m->mark;
+    m->bottom = m->mark;    
 }
 
+<<<<<<< Updated upstream
 typedef struct cell_list_node CELL_LIST_NODE;
+=======
+struct status {
+    uint8_t overflows;
+    uint8_t underflows;
+} STATUS;
+
+>>>>>>> Stashed changes
 typedef struct cell {
     uint8_t type:2;
     uint8_t length:6;
@@ -75,6 +151,7 @@ typedef struct cell {
     };
 } CELL;
 
+<<<<<<< Updated upstream
 typedef struct cell_list_node {
     union {
         struct {
@@ -187,6 +264,72 @@ CELL *bind(
     symbol_list->list_node = new_bind;
     symbol_list->length += 2;
     return symbol_list;
+=======
+typedef struct vlist_node {
+    union {
+        // these ptr arrays must be same size elements (expecting sizeof(ptr))
+        // only cells is used unless there is a next entry in the last position
+        void *cells[VLIST_NODE_INITIAL_SIZE];
+        struct vlist_node *next[VLIST_NODE_INITIAL_SIZE];
+    };
+} VLIST_NODE;
+
+typedef struct vlist {
+    uint8_t size;
+    VLIST_NODE *root;
+} VLIST;
+
+VLIST *cell_vlist_new(MEM *const m) {
+    VLIST *cv = mem_alloc(m, sizeof(VLIST));
+    cv->root = mem_alloc(m, sizeof(VLIST_NODE));
+    cv->size = 0;
+}
+
+void vlist_append(MEM *const m, VLIST *const cv, void *const c) {
+    uint8_t cur_node_size = VLIST_NODE_INITIAL_SIZE;
+    uint8_t size_rem = cv->size;
+    VLIST_NODE *node_ptr = cv->root;
+    while (TRUE) {
+        size_rem = size_rem - cur_node_size;
+        if (size_rem <= 0) {
+            break;
+        } else {
+            // there's more nodes in the list and the last element was used 
+            // for next instead of cell
+            size_rem++;
+        }
+        node_ptr = node_ptr->next[cur_node_size-1];
+        cur_node_size <<= 1;
+    }
+    if (size_rem == 0) {
+        // last list full, allocate new
+        CELL *tmp = node_ptr->cells[cur_node_size-1];
+        node_ptr->next[cur_node_size-1] = mem_alloc(m, cur_node_size<<1);
+        node_ptr->next[cur_node_size-1]->cells[0] = tmp;
+        node_ptr->next[cur_node_size-1]->cells[1] = c;
+    } else {
+        node_ptr->cells[size_rem + cur_node_size] = c;
+    }
+    cv->size++;
+}
+
+void *vlist_nth(VLIST *const cv, const uint8_t nth) {
+    lassert(nth >= cv->size, VLIST_INDEX_OUT_OF_BOUNDS);
+    uint8_t cur_node_size = VLIST_NODE_INITIAL_SIZE;
+    uint8_t size_rem = nth;
+    VLIST_NODE *node_ptr = cv->root;
+    while (TRUE) {
+        size_rem = size_rem - cur_node_size;
+        if (size_rem <= 0) {
+            break;
+        } else {
+            // more nodes in the list, last element is next ptr
+            size_rem++;
+        }
+        node_ptr = node_ptr->next[cur_node_size-1];
+        cur_node_size <<= 1;
+    }
+    return node_ptr->cells[size_rem + cur_node_size];
 }
 
 int32_t cell_integer_unpack(CELL *const cell) {
@@ -199,12 +342,18 @@ int32_t cell_integer_unpack(CELL *const cell) {
 }
 
 CELL *cell_integer_pack(CELL *const cell, int32_t val) {
-    if (val < 0) {
-        val = -val;
+    #define MAX_INT (1<<(16+5) - 1)
+    #define MIN_INT (-1<<(16+5))
+    if (val > MAX_INT) {
+        val = MAX_INT;
+        STATUS.overflows++;
+    } else if (val < MIN_INT) {
+        val = MIN_INT;
+        STATUS.underflows++;
     }
     // integer should be 16bits, store extra bits in length
     cell->length = (val >> 16) & 0x3F;
-    cell->integer = val;
+    cell->integer = (uint16_t)val;
     return cell;
 }
 
@@ -217,6 +366,7 @@ CELL *add(MEM *const m, CELL *const target, CELL *const list) {
 }
 
 CELL *subtract(MEM *const m, CELL *const target, CELL *const list) {
+    CELL *c = mem_alloc(m, sizeof(CELL));
     int32_t val = 0;
     if (list->length >= 1) {
         val = cell_integer_unpack(list_nth(list, 1));
@@ -227,25 +377,20 @@ CELL *subtract(MEM *const m, CELL *const target, CELL *const list) {
     return cell_integer_pack(target, val);
 }
 
-CELL *defn(MEM *const m, CELL *list) {
-    CELL *symbol = &list[1];
-    uint8_t argcount = list[2].length;
-    return list;
-}
-
-CELL *list_first(CELL *list) {
+CELL *list_first(CELL *const list) {
     lassert(list->type == LIST, LIST_FIRST_DIDNT_GET_LIST);
     return &list[1];
 }
 
-CELL *next_cell(CELL *cell) {
+CELL *next_cell(CELL *const cell) {
+    CELL *itr = cell;
     uint8_t remaining[MAX_RECURSION];
     uint8_t depth = 0;
     if (cell->type != LIST) {
         return &cell[1];
     }
     remaining[depth] = cell->length;
-    cell++;
+    itr++;
     while (TRUE) {
         if (remaining[depth] == 0) {
             depth--;
@@ -257,9 +402,9 @@ CELL *next_cell(CELL *cell) {
             remaining[++depth] = cell->length;
             lassert(depth < MAX_RECURSION, RECURSION_DEPTH_EXCEEDED);
         }
-        cell++;
+        itr++;
     }
-    return cell;
+    return itr;
 }
 
 
@@ -323,25 +468,6 @@ CELL *eq(MEM *const mem, CELL *const list) {
     }
 }
 
-enum modifier {
-    QUOTE, LAZY_EVAL,
-};
-typedef CELL* (*builtin_fn)(MEM *const m, CELL *list);
-typedef struct builtin_binding {
-    builtin_fn fn;
-    uint8_t modifier:2;
-    uint8_t symbol_length:6;
-    char *symbol;
-} BUILTIN_BINDINGS[] = {
-    { .fn = add, .modifier = 0, .symbol = "+" },
-    { .fn = subtract, .modifier = 0, .symbol = "-"},
-    { .fn = eq, .modifier = 0, .symbol = "="},
-    { .fn = defn, .modifier = QUOTE, .symbol = "defn"},
-    { .fn = cond, .modifier = LAZY_EVAL, .symbol = "cond"},
-    { .fn = iff, .modifier = LAZY_EVAL, .symbol = "if"},
-    { .fn = let, .modifier = QUOTE, .symbol = "let"},
-    { .fn = append, .modifier = 0, .symbol = "append"},
-};
 
 #define BUILTIN_COUNT (sizeof(BUILTIN_BINDINGS) / sizeof(struct builtin_binding))
 
@@ -387,8 +513,12 @@ typedef struct binding_vlist {
     uint8_t size;
 } BINDING_VLIST;
 
+
 BINDING_VLIST *bind_new(MEM *const m, CELL *symbol, CELL *const value) {
     BINDING_VLIST *bv = mem_bottomalloc(m, sizeof(BINDING_VLIST));
+BINDING_VLIST *bind_new(MEM *const m, CELL *const symbol, CELL *const value) {
+    BINDING_VLIST *bv = mem_alloc(m, sizeof(BINDING_VLIST));
+>>>>>>> Stashed changes
     bv->size = 0;
     bv->root = NULL;
     bv->marks = NULL;
@@ -396,18 +526,30 @@ BINDING_VLIST *bind_new(MEM *const m, CELL *symbol, CELL *const value) {
 };
 
 void binding_push_mark(MEM *const m, BINDING_VLIST *const bv) {
+<<<<<<< Updated upstream
     BINDING_MARK *mark = mem_bottomalloc(m, sizeof(BINDING_MARK));
+=======
+    BINDING_MARK *mark = mem_alloc(m, sizeof(BINDING_MARK));
+>>>>>>> Stashed changes
     mark->size = bv->size;
     mark->parent = bv->marks;
     bv->marks = mark;
 }
 
-void binding_pop_mark(MEM *mem, BINDING_VLIST *bv) {
+void binding_pop_mark(MEM *mem, BINDING_VLIST *const bv) {
     bv->size = bv->marks->size;
     bv->marks = bv->marks->parent;
 }
 
+<<<<<<< Updated upstream
 void bind(MEM *const m, BINDING_VLIST *const bv, CELL *const symbol, CELL *const value) {
+=======
+void bind(
+        MEM *const m, 
+        BINDING_VLIST *const bv, 
+        CELL *const symbol, 
+        CELL *const value) {
+>>>>>>> Stashed changes
     uint8_t size_remaining = bv->size;
     uint8_t node_size = 1;
     BINDING_VLIST_NODE **node = &bv->root;
@@ -420,7 +562,7 @@ void bind(MEM *const m, BINDING_VLIST *const bv, CELL *const symbol, CELL *const
     }
     if (*node == NULL) {
         lassert(size_remaining == 0, BINDING_NODE_SIZE_REMAINING_NONZERO);
-        *node = mem_bottomalloc(m, SIZEOF_BINDING_VLIST_NODE(node_size));
+        *node = mem_alloc(m, SIZEOF_BINDING_VLIST_NODE(node_size));
     }
     (*node)->pairs[size_remaining].symbol = symbol;
     (*node)->pairs[size_remaining].value = value;
@@ -450,8 +592,12 @@ typedef struct reader {
     BINDING_VLIST *bindings;
 } READER;
 
+<<<<<<< Updated upstream
 
 static inline char reader_ungetc(READER *const r, const char c) {
+=======
+static inline char reader_ungetc(READER *const r, char c) {
+>>>>>>> Stashed changes
     lassert(r->ungetbuff_i < sizeof(r->ungetbuff), READER_UNGETC_ERROR);
     r->ungetbuff[r->ungetbuff_i++] = c;
     return c;
@@ -530,7 +676,7 @@ static inline char next_non_ws(READER *const r) {
 }
 
 READER *reader_new(MEM *const m) {
-    READER *r = mem_bottomalloc(m, sizeof(READER));
+    READER *r = mem_alloc(m, sizeof(READER));
 
     r->ungetbuff_i = 0;
 
@@ -538,27 +684,25 @@ READER *reader_new(MEM *const m) {
     r->unused_states = NULL;
     return r;
 }
-enum {
-    READING_STRING,
-    READING_INTEGER,
-    READING_ANYTHING,
-};
+
+enum { READING_STRING, READING_INTEGER, READING_ANYTHING, };
 
 
-void reader_push_new_state(READER *reader) {
+void reader_push_state(READER *const r) {
+    // pushes a new state onto the reader
     READER_STATE *state;
-    if (reader->unused_states) {
-        state = reader->unused_states;
-        reader->unused_states = state->parent;
+    if (r->unused_states) {
+        state = r->unused_states;
+        r->unused_states = state->parent;
     } else {
-        state = mem_bottomalloc(reader->mem, sizeof(READER_STATE));
+        state = mem_alloc(r->mem, sizeof(READER_STATE));
     }
-    state->parent = reader->state;
+    state->parent = r->state;
     state->parse_state = READING_ANYTHING;
-    reader->state = state;
+    r->state = state;
 }
 
-void reader_pop_state(READER *r) {
+void reader_pop_state(READER *const r) {
     // pops READER_STATE off current list and puts it back in unused.
     READER_STATE *unused_state = r->state;
     r->state = r->state->parent;
@@ -566,8 +710,7 @@ void reader_pop_state(READER *r) {
     r->unused_states = unused_state;
 }
 
-void reader_string_start(READER *r) {
-    reader_push_new_state(r);
+void reader_string_start(READER *const r) {
     reader_push_cell(r);
 
     READER_STATE *state = r->state;
@@ -581,7 +724,7 @@ void reader_string_start(READER *r) {
     cell->length = 0;
 }
 
-void reader_string_read(READER *r, char c) {
+void reader_string_read(READER *const r, char c) {
     // strings are read backwards
     READER_STATE *state = r->state;
     if (state->first_char == '\n') {
@@ -594,11 +737,11 @@ void reader_string_read(READER *r, char c) {
     cell->length++;
 }
 
-CELL *eval_string(READER *r, CELL *cell) {
+CELL *eval_string(READER *const r, CELL *const cell) {
     return cell;
 }
 
-CELL *reader_string_end(READER *r) {
+CELL *reader_string_end(READER *const r) {
     // reverse the reverse-read string
     char *start = r->state->cell->rev_str;
     char *end = &start[r->state->cell->length-1];
@@ -615,7 +758,7 @@ CELL *reader_string_end(READER *r) {
     mem_bottomunlock(r->mem, r->state->cell->rev_str);
 }
 
-void reader_integer_start(READER *r) {
+void reader_integer_start(READER *const r) {
     reader_push_new_state(r);
     reader_push_cell(r);
     r->state->cell->type = INTEGER;
@@ -624,7 +767,7 @@ void reader_integer_start(READER *r) {
     r->state->sign = 1;
 }
 
-void reader_integer_read(READER *r, char c) {
+void reader_integer_read(READER *const r, const char c) {
     if (c == '-' && r->state->accumulator == 0) {
         r->state->sign = -1;
     } else {
@@ -635,21 +778,24 @@ void reader_integer_read(READER *r, char c) {
     }
 }
 
-void reader_integer_end(READER *r) {
+void reader_integer_end(READER *const r) {
     cell_integer_pack(r->state->cell, r->state->accumulator);
 }
 
 
-void reader_list_start(READER *r) {
+void reader_list_start(READER *const r) {
     r->state->parse_state = READING_ANYTHING;
 
     r->state->cell = reader_get_temp_cell(r->mem, sizeof(CELL));
-    
     r->state->cell->type = LIST;
     r->state->cell->length = 0;
 }
 
+<<<<<<< Updated upstream
 void reader_list_read_element(READER *const r, CELL *c) {
+=======
+void reader_list_read_element(READER *const r, CELL *const cell) {
+>>>>>>> Stashed changes
     reader_pop_state(r);
 }
 
@@ -673,6 +819,7 @@ CELL *reader_free_temp_cell(READER *const r, CELL *const c) {
     r->cell_free_list = c;
     return c; 
 }
+
 
 void reader_read(READER *const r) {
     while (TRUE) {

@@ -22,5 +22,7 @@
     "editor.detectIndentation": false,
     "editor.rulers": [80],
     "editor.formatOnType": true,
-    "C_Cpp.clang_format_path": "/usr/local/bin/clang-format"
+    "C_Cpp.clang_format_path": "/usr/local/bin/clang-format",
+    "C_Cpp.intelliSenseEngine": "Default",
+    "window.title": "${activeEditorLong}"
 }
